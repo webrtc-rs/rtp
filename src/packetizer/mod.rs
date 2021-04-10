@@ -4,6 +4,7 @@ use crate::header::*;
 use crate::packet::*;
 use crate::sequence::*;
 
+use bytes::Bytes;
 use std::io::{BufWriter, Read};
 use std::time::{Duration, SystemTime};
 
@@ -91,7 +92,7 @@ impl Packetizer for PacketizerImpl {
                     ssrc: self.ssrc,
                     ..Default::default()
                 },
-                payload,
+                payload: Bytes::new(), //TODO: payload,
             });
             i += 1;
         }
@@ -112,9 +113,10 @@ impl Packetizer for PacketizerImpl {
                 send_time.marshal(&mut writer)?;
             }
 
-            packets[l - 1]
-                .header
-                .set_extension(self.abs_send_time, &raw)?;
+            //TODO:
+            /*packets[l - 1]
+            .header
+            .set_extension(self.abs_send_time, &raw)?;*/
         }
 
         Ok(packets)

@@ -1,8 +1,6 @@
-use std::io::{Read, Write};
+use crate::error::*;
 
-use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-
-use crate::error::Error;
+use bytes::{Buf, BufMut, Bytes, BytesMut};
 
 const HEADER_LENGTH: usize = 4;
 const VERSION_SHIFT: u8 = 6;
@@ -30,7 +28,7 @@ const CSRC_LENGTH: usize = 4;
 #[derive(Debug, Eq, PartialEq, Default)]
 pub struct Extension {
     pub id: u8,
-    pub payload: Vec<u8>,
+    pub payload: Bytes,
 }
 
 // Header represents an RTP packet header
@@ -86,28 +84,28 @@ impl Header {
     }
 
     // SetExtension sets an RTP header extension
-    pub fn set_extension(&mut self, id: u8, payload: &[u8]) -> Result<(), Error> {
+    pub fn set_extension(&mut self, id: u8, payload: Bytes) -> Result<(), Error> {
         if self.extension {
             match self.extension_profile {
                 EXTENSION_PROFILE_ONE_BYTE => {
                     if !(1..=14).contains(&id) {
-                        return Err(Error::HeaderExtensionIdOneByteLength);
+                        return Err(Error::errRFC8285OneByteHeaderIDRange);
                     }
                     if payload.len() > 16 {
-                        return Err(Error::HeaderExtensionPayloadOneByteLength);
+                        return Err(Error::errRFC8285OneByteHeaderSize);
                     }
                 }
                 EXTENSION_PROFILE_TWO_BYTE => {
                     if id < 1 {
-                        return Err(Error::HeaderExtensionIdTwoByteLength);
+                        return Err(Error::errRFC8285TwoByteHeaderIDRange);
                     }
                     if payload.len() > 255 {
-                        return Err(Error::HeaderExtensionPayloadTwoByteLength);
+                        return Err(Error::errRFC8285TwoByteHeaderSize);
                     }
                 }
                 _ => {
                     if id != 0 {
-                        return Err(Error::HeaderExtensionIdShouldBeZero);
+                        return Err(Error::errRFC3550HeaderIDRange);
                     }
                 }
             };
@@ -115,15 +113,11 @@ impl Header {
             // Update existing if it exists else add new extension
             for extension in &mut self.extensions {
                 if extension.id == id {
-                    extension.payload.clear();
-                    extension.payload.extend_from_slice(payload);
+                    extension.payload = payload;
                     return Ok(());
                 }
             }
-            self.extensions.push(Extension {
-                id,
-                payload: payload.to_vec(),
-            });
+            self.extensions.push(Extension { id, payload });
             return Ok(());
         }
 
@@ -137,23 +131,20 @@ impl Header {
             self.extension_profile = EXTENSION_PROFILE_TWO_BYTE
         }
 
-        self.extensions.push(Extension {
-            id,
-            payload: payload.to_vec(),
-        });
+        self.extensions.push(Extension { id, payload });
 
         Ok(())
     }
 
     // returns an RTP header extension
-    pub fn get_extension(&self, id: u8) -> Option<&[u8]> {
+    pub fn get_extension(&self, id: u8) -> Option<Bytes> {
         if !self.extension {
             return None;
         }
 
         for extension in &self.extensions {
             if extension.id == id {
-                return Some(&extension.payload);
+                return Some(extension.payload.clone());
             }
         }
         None
@@ -162,7 +153,7 @@ impl Header {
     // Removes an RTP Header extension
     pub fn del_extension(&mut self, id: u8) -> Result<(), Error> {
         if !self.extension {
-            return Err(Error::HeaderExtensionNotEnabled);
+            return Err(Error::errHeaderExtensionsNotEnabled);
         }
         for index in 0..self.extensions.len() {
             if self.extensions[index].id == id {
@@ -170,11 +161,14 @@ impl Header {
                 return Ok(());
             }
         }
-        Err(Error::HeaderExtensionNotFound)
+        Err(Error::errHeaderExtensionNotFound)
     }
 
     // Unmarshal parses the passed byte slice and stores the result in the Header this method is called upon
-    pub fn unmarshal<R: Read>(reader: &mut R) -> Result<Self, Error> {
+    pub fn unmarshal(raw_packet: &Bytes) -> Result<Self, Error> {
+        if raw_packet.len() < HEADER_LENGTH {
+            return Err(Error::errHeaderSizeInsufficient);
+        }
         /*
          *  0                   1                   2                   3
          *  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
@@ -189,51 +183,62 @@ impl Header {
          * |                             ....                              |
          * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
          */
+        let reader = &mut raw_packet.clone();
 
-        let b0 = reader.read_u8()?;
+        let b0 = reader.get_u8();
         let version = b0 >> VERSION_SHIFT & VERSION_MASK;
         let padding = (b0 >> PADDING_SHIFT & PADDING_MASK) > 0;
         let extension = (b0 >> EXTENSION_SHIFT & EXTENSION_MASK) > 0;
         let cc = (b0 & CC_MASK) as usize;
 
-        let b1 = reader.read_u8()?;
+        let mut curr_offset = CSRC_OFFSET + (cc * CSRC_LENGTH);
+        if raw_packet.len() < curr_offset {
+            return Err(Error::errHeaderSizeInsufficient);
+        }
+
+        let b1 = reader.get_u8();
         let marker = (b1 >> MARKER_SHIFT & MARKER_MASK) > 0;
         let payload_type = b1 & PT_MASK;
 
-        let sequence_number = reader.read_u16::<BigEndian>()?;
-        let timestamp = reader.read_u32::<BigEndian>()?;
-        let ssrc = reader.read_u32::<BigEndian>()?;
+        let sequence_number = reader.get_u16();
+        let timestamp = reader.get_u32();
+        let ssrc = reader.get_u32();
 
         let mut csrc = vec![];
-        for _i in 0..cc {
-            csrc.push(reader.read_u32::<BigEndian>()?);
+        for _ in 0..cc {
+            csrc.push(reader.get_u32());
         }
 
         let (extension_profile, extensions) = if extension {
-            //let mut payload_offset = CSRC_OFFSET + (cc * CSRC_LENGTH);
-            let extension_profile = reader.read_u16::<BigEndian>()?;
-            //payload_offset += 2;
-            let extension_length = reader.read_u16::<BigEndian>()? as usize * 4;
-            //payload_offset += 2;
+            let expected = curr_offset + 4;
+            if raw_packet.len() < expected {
+                return Err(Error::errHeaderSizeInsufficientForExtension);
+            }
+            let extension_profile = reader.get_u16();
+            curr_offset += 2;
+            let extension_length = reader.get_u16() as usize * 4;
+            curr_offset += 2;
 
-            let mut payload = vec![0; extension_length];
-            reader.read_exact(&mut payload)?;
-            //payload_offset += payload.len();
+            let expected = curr_offset + extension_length;
+            if raw_packet.len() < expected {
+                return Err(Error::errHeaderSizeInsufficientForExtension);
+            }
 
             let mut extensions = vec![];
             match extension_profile {
                 // RFC 8285 RTP One Byte Header Extension
                 EXTENSION_PROFILE_ONE_BYTE => {
-                    let mut curr_offset = 0;
-                    while curr_offset < extension_length {
-                        if payload[curr_offset] == 0x00 {
+                    let end = curr_offset + extension_length;
+                    while curr_offset < end {
+                        let b = reader.get_u8();
+                        if b == 0x00 {
                             // padding
                             curr_offset += 1;
                             continue;
                         }
 
-                        let extid = payload[curr_offset] >> 4;
-                        let len = ((payload[curr_offset] & (0xFF ^ 0xF0)) + 1) as usize;
+                        let extid = b >> 4;
+                        let len = ((b & (0xFF ^ 0xF0)) + 1) as usize;
                         curr_offset += 1;
 
                         if extid == EXTENSION_ID_RESERVED {
@@ -242,36 +247,48 @@ impl Header {
 
                         extensions.push(Extension {
                             id: extid,
-                            payload: payload[curr_offset..curr_offset + len].to_vec(),
+                            payload: raw_packet.slice(curr_offset..curr_offset + len),
                         });
+                        reader.advance(len);
                         curr_offset += len;
                     }
                 }
                 // RFC 8285 RTP Two Byte Header Extension
                 EXTENSION_PROFILE_TWO_BYTE => {
-                    let mut curr_offset = 0;
-                    while curr_offset < extension_length {
-                        if payload[curr_offset] == 0x00 {
+                    let end = curr_offset + extension_length;
+                    while curr_offset < end {
+                        let b = reader.get_u8();
+                        if b == 0x00 {
                             // padding
                             curr_offset += 1;
                             continue;
                         }
 
-                        let extid = payload[curr_offset];
+                        let extid = b;
                         curr_offset += 1;
 
-                        let len = payload[curr_offset] as usize;
+                        let len = reader.get_u8() as usize;
                         curr_offset += 1;
 
                         extensions.push(Extension {
                             id: extid,
-                            payload: payload[curr_offset..curr_offset + len].to_vec(),
+                            payload: raw_packet.slice(curr_offset..curr_offset + len),
                         });
+                        reader.advance(len);
                         curr_offset += len;
                     }
                 }
+                // RFC3550 Extension
                 _ => {
-                    extensions.push(Extension { id: 0, payload });
+                    if raw_packet.len() < curr_offset + extension_length {
+                        return Err(Error::errHeaderSizeInsufficientForExtension);
+                    }
+                    extensions.push(Extension {
+                        id: 0,
+                        payload: raw_packet.slice(curr_offset..curr_offset + extension_length),
+                    });
+                    reader.advance(extension_length);
+                    //curr_offset += extension_length;
                 }
             };
 
@@ -296,7 +313,7 @@ impl Header {
     }
 
     // Marshal serializes the header and writes to the buffer.
-    pub fn marshal<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
+    pub fn marshal(&self, buf: &mut BytesMut) -> Result<usize, Error> {
         /*
          *  0                   1                   2                   3
          *  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
@@ -311,6 +328,8 @@ impl Header {
          * |                             ....                              |
          * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
          */
+        let writer = buf;
+
         // The first byte contains the version, padding bit, extension bit, and csrc size
         let mut b0 = (self.version << VERSION_SHIFT) | self.csrc.len() as u8;
         if self.padding {
@@ -320,26 +339,30 @@ impl Header {
         if self.extension {
             b0 |= 1 << EXTENSION_SHIFT;
         }
-        writer.write_u8(b0)?;
+        writer.put_u8(b0);
 
         // The second byte contains the marker bit and payload type.
         let mut b1 = self.payload_type;
         if self.marker {
             b1 |= 1 << MARKER_SHIFT;
         }
-        writer.write_u8(b1)?;
+        writer.put_u8(b1);
 
-        writer.write_u16::<BigEndian>(self.sequence_number)?;
-        writer.write_u32::<BigEndian>(self.timestamp)?;
-        writer.write_u32::<BigEndian>(self.ssrc)?;
+        writer.put_u16(self.sequence_number);
+        writer.put_u32(self.timestamp);
+        writer.put_u32(self.ssrc);
 
+        let mut n = 12;
         for csrc in &self.csrc {
-            writer.write_u32::<BigEndian>(*csrc)?;
+            writer.put_u32(*csrc);
+            n += 4;
         }
 
         if self.extension {
-            writer.write_u16::<BigEndian>(self.extension_profile)?;
+            writer.put_u16(self.extension_profile);
+            n += 2;
 
+            // calculate extensions size and round to 4 bytes boundaries
             let extension_payload_len = self.get_extension_payload_len();
             if self.extension_profile != EXTENSION_PROFILE_ONE_BYTE
                 && self.extension_profile != EXTENSION_PROFILE_TWO_BYTE
@@ -349,35 +372,54 @@ impl Header {
                 return Err(Error::HeaderExtensionPayloadNot32BitWords);
             }
             let extension_payload_size = (extension_payload_len as u16 + 3) / 4;
-            writer.write_u16::<BigEndian>(extension_payload_size)?;
+            writer.put_u16(extension_payload_size);
+            n += 2;
 
             match self.extension_profile {
+                // RFC 8285 RTP One Byte Header Extension
                 EXTENSION_PROFILE_ONE_BYTE => {
                     for extension in &self.extensions {
-                        writer
-                            .write_u8((extension.id << 4) | (extension.payload.len() as u8 - 1))?;
-                        writer.write_all(&extension.payload)?;
+                        writer.put_u8((extension.id << 4) | (extension.payload.len() as u8 - 1));
+                        n += 1;
+                        writer.put(&*extension.payload);
+                        n += extension.payload.len();
                     }
                 }
+                // RFC 8285 RTP Two Byte Header Extension
                 EXTENSION_PROFILE_TWO_BYTE => {
                     for extension in &self.extensions {
-                        writer.write_u8(extension.id)?;
-                        writer.write_u8(extension.payload.len() as u8)?;
-                        writer.write_all(&extension.payload)?;
+                        writer.put_u8(extension.id);
+                        n += 1;
+                        writer.put_u8(extension.payload.len() as u8);
+                        n += 1;
+                        writer.put(&*extension.payload);
+                        n += extension.payload.len();
                     }
                 }
+                // RFC3550 Extension
                 _ => {
-                    for extension in &self.extensions {
-                        writer.write_all(&extension.payload)?;
+                    if self.extensions.len() != 1 {
+                        return Err(Error::errRFC3550HeaderIDRange);
+                    }
+
+                    if let Some(extension) = self.extensions.first() {
+                        let ext_len = extension.payload.len();
+                        if ext_len % 4 != 0 {
+                            return Err(Error::HeaderExtensionPayloadNot32BitWords);
+                        }
+                        writer.put(&*extension.payload);
+                        n += ext_len;
                     }
                 }
             };
 
+            // add padding to reach 4 bytes boundaries
             for _ in extension_payload_len..extension_payload_size as usize * 4 {
-                writer.write_u8(0)?;
+                writer.put_u8(0);
+                n += 1;
             }
         }
 
-        Ok(writer.flush()?)
+        Ok(n)
     }
 }

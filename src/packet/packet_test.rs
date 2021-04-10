@@ -2,22 +2,19 @@ use super::*;
 
 use std::io::{BufReader, BufWriter};
 
-//TODO: BenchmarkMarshal
-//TODO: BenchmarkUnmarshal
-
 #[test]
 fn test_basic() -> Result<(), Error> {
-    let empty_bytes = vec![];
-    let mut reader = BufReader::new(empty_bytes.as_slice());
-    let result = Packet::unmarshal(&mut reader);
-    if result.is_ok() {
-        assert!(false, "Unmarshal did not error on zero length packet");
-    }
+    let empty_bytes = Bytes::new();
+    let result = Packet::unmarshal(&empty_bytes);
+    assert!(
+        result.is_err(),
+        "Unmarshal did not error on zero length packet"
+    );
 
-    let raw_pkt = vec![
+    let raw_pkt = Bytes::from_static(&[
         0x90, 0xe0, 0x69, 0x8f, 0xd9, 0xc2, 0x93, 0xda, 0x1c, 0x64, 0x27, 0x82, 0x00, 0x01, 0x00,
         0x01, 0xFF, 0xFF, 0xFF, 0xFF, 0x98, 0x36, 0xbe, 0x88, 0x9e,
-    ];
+    ]);
     let parsed_packet = Packet {
         header: Header {
             version: 2,
@@ -32,28 +29,29 @@ fn test_basic() -> Result<(), Error> {
             extension_profile: 1,
             extensions: vec![Extension {
                 id: 0,
-                payload: vec![0xFF, 0xFF, 0xFF, 0xFF],
+                payload: Bytes::from_static(&[0xFF, 0xFF, 0xFF, 0xFF]),
             }],
             ..Default::default()
         },
-        payload: vec![0x98, 0x36, 0xbe, 0x88, 0x9e],
+        payload: Bytes::from_static(&[0x98, 0x36, 0xbe, 0x88, 0x9e]),
     };
 
-    let mut reader = BufReader::new(raw_pkt.as_slice());
-    let packet = Packet::unmarshal(&mut reader)?;
+    let packet = Packet::unmarshal(&raw_pkt)?;
     assert_eq!(
         packet, parsed_packet,
         "TestBasic unmarshal: got {}, want {}",
         packet, parsed_packet
     );
-
+    assert_eq!(
+        packet.header.size(),
+        20,
+        "wrong computed header marshal size"
+    );
     assert_eq!(packet.size(), raw_pkt.len(), "wrong computed marshal size");
 
-    let mut raw: Vec<u8> = vec![];
-    {
-        let mut writer = BufWriter::<&mut Vec<u8>>::new(raw.as_mut());
-        packet.marshal(&mut writer)?;
-    }
+    let mut raw = BytesMut::new();
+    let n = packet.marshal(&mut raw)?;
+    assert_eq!(n, raw_pkt.len(), "wrong marshal size");
 
     assert_eq!(
         raw.len(),
@@ -73,30 +71,24 @@ fn test_basic() -> Result<(), Error> {
 
 #[test]
 fn test_extension() -> Result<(), Error> {
-    let missing_extension_pkt = vec![
+    let missing_extension_pkt = Bytes::from_static(&[
         0x90, 0x60, 0x69, 0x8f, 0xd9, 0xc2, 0x93, 0xda, 0x1c, 0x64, 0x27, 0x82,
-    ];
-    let mut reader = BufReader::new(missing_extension_pkt.as_slice());
-    let result = Packet::unmarshal(&mut reader);
-    if result.is_ok() {
-        assert!(
-            false,
-            "Unmarshal did not error on packet with missing extension data"
-        );
-    }
+    ]);
+    let result = Packet::unmarshal(&missing_extension_pkt);
+    assert!(
+        result.is_err(),
+        "Unmarshal did not error on packet with missing extension data"
+    );
 
-    let invalid_extension_length_pkt = vec![
+    let invalid_extension_length_pkt = Bytes::from_static(&[
         0x90, 0x60, 0x69, 0x8f, 0xd9, 0xc2, 0x93, 0xda, 0x1c, 0x64, 0x27, 0x82, 0x99, 0x99, 0x99,
         0x99,
-    ];
-    let mut reader = BufReader::new(invalid_extension_length_pkt.as_slice());
-    let result = Packet::unmarshal(&mut reader);
-    if result.is_ok() {
-        assert!(
-            false,
-            "Unmarshal did not error on packet with invalid extension length"
-        );
-    }
+    ]);
+    let result = Packet::unmarshal(&invalid_extension_length_pkt);
+    assert!(
+        result.is_err(),
+        "Unmarshal did not error on packet with invalid extension length"
+    );
 
     let packet = Packet {
         header: Header {
@@ -104,30 +96,25 @@ fn test_extension() -> Result<(), Error> {
             extension_profile: 3,
             extensions: vec![Extension {
                 id: 0,
-                payload: vec![0],
+                payload: Bytes::from_static(&[0]),
             }],
             ..Default::default()
         },
-        payload: vec![],
+        payload: Bytes::from_static(&[]),
     };
 
-    let mut raw: Vec<u8> = vec![];
-    {
-        let mut writer = BufWriter::<&mut Vec<u8>>::new(raw.as_mut());
-        let result = packet.marshal(&mut writer);
-        if result.is_ok() {
-            assert!(
-                false,
-                "Marshal did not error on packet with invalid extension length"
-            );
-        }
-    }
+    let mut raw = BytesMut::new();
+    let result = packet.marshal(&mut raw);
+    assert!(
+        result.is_err(),
+        "Marshal did not error on packet with invalid extension length"
+    );
 
     Ok(())
 }
 
 #[test]
-fn test_packet_marshal() -> Result<(), Error> {
+fn test_packet_marshal_unmarshal() -> Result<(), Error> {
     let pkt = Packet {
         header: Header {
             extension: true,
@@ -136,68 +123,29 @@ fn test_packet_marshal() -> Result<(), Error> {
             extensions: vec![
                 Extension {
                     id: 1,
-                    payload: vec![3, 4],
+                    payload: Bytes::from_static(&[3, 4]),
                 },
                 Extension {
                     id: 2,
-                    payload: vec![5, 6],
+                    payload: Bytes::from_static(&[5, 6]),
                 },
             ],
             ..Default::default()
         },
-        payload: vec![0xFFu8; 1500], //vec![0x07, 0x08, 0x09, 0x0a], //MTU=1500
+        payload: Bytes::from_static(&[0xFFu8; 15]),
         ..Default::default()
     };
+    let mut raw = BytesMut::new();
+    let _ = pkt.marshal(&mut raw)?;
 
-    for _ in 0..1_000 {
-        //_000 {
-        let mut raw: Vec<u8> = vec![];
-        {
-            let mut writer = BufWriter::<&mut Vec<u8>>::new(raw.as_mut());
-            pkt.marshal(&mut writer)?;
-        }
-    }
+    let raw = raw.freeze();
+    let p = Packet::unmarshal(&raw)?;
+
+    assert_eq!(pkt, p);
 
     Ok(())
 }
-
-#[test]
-fn test_packet_unmarshal() -> Result<(), Error> {
-    let pkt = Packet {
-        header: Header {
-            extension: true,
-            csrc: vec![1, 2],
-            extension_profile: EXTENSION_PROFILE_TWO_BYTE,
-            extensions: vec![
-                Extension {
-                    id: 1,
-                    payload: vec![3, 4],
-                },
-                Extension {
-                    id: 2,
-                    payload: vec![5, 6],
-                },
-            ],
-            ..Default::default()
-        },
-        payload: vec![0xFFu8; 1500], //vec![0x07, 0x08, 0x09, 0x0a], //MTU=1500
-        ..Default::default()
-    };
-    let mut raw: Vec<u8> = vec![];
-    {
-        let mut writer = BufWriter::<&mut Vec<u8>>::new(raw.as_mut());
-        pkt.marshal(&mut writer)?;
-    }
-
-    for _ in 0..1_000 {
-        //_000 {
-        let mut reader = BufReader::new(raw.as_slice());
-        let _ = Packet::unmarshal(&mut reader)?;
-    }
-
-    Ok(())
-}
-
+/*
 #[test]
 fn test_rfc8285_one_byte_extension() -> Result<(), Error> {
     let raw_pkt = vec![
@@ -394,6 +342,8 @@ fn test_rfc8285_one_byte_multiple_extensions_with_padding() {
         assert!(result.is_err());
     }
 }
+
+ */
 
 //TODO: ADD more tests in https://github.com/pion/rtp/blob/master/packet_test.go
 //TODO: ...

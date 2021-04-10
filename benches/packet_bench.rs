@@ -1,3 +1,4 @@
+use bytes::{Bytes, BytesMut};
 use criterion::{criterion_group, criterion_main, Criterion};
 use std::io::{BufReader, BufWriter};
 use webrtc_rtp::{header::*, packet::*};
@@ -11,25 +12,22 @@ fn benchmark_packet(c: &mut Criterion) {
             extensions: vec![
                 Extension {
                     id: 1,
-                    payload: vec![3, 4],
+                    payload: Bytes::from_static(&[3, 4]),
                 },
                 Extension {
                     id: 2,
-                    payload: vec![5, 6],
+                    payload: Bytes::from_static(&[5, 6]),
                 },
             ],
             ..Default::default()
         },
-        payload: vec![0xFFu8; 1500], //vec![0x07, 0x08, 0x09, 0x0a], //MTU=1500
+        payload: Bytes::from_static(&[0xFFu8; 15]), //vec![0x07, 0x08, 0x09, 0x0a], //MTU=1500
         ..Default::default()
     };
-    let mut raw: Vec<u8> = vec![];
-    {
-        let mut writer = BufWriter::<&mut Vec<u8>>::new(raw.as_mut());
-        pkt.marshal(&mut writer).unwrap();
-    }
-    let mut reader = BufReader::new(raw.as_slice());
-    let p = Packet::unmarshal(&mut reader).unwrap();
+    let mut raw = BytesMut::new();
+    let n = pkt.marshal(&mut raw).unwrap();
+    let raw = raw.freeze();
+    let p = Packet::unmarshal(&raw).unwrap();
     if pkt != p {
         panic!(
             "marshal or unmarshal not correct: \npkt: {:?} \nvs \np: {:?}",
@@ -41,18 +39,14 @@ fn benchmark_packet(c: &mut Criterion) {
 
     c.bench_function("Benchmark Marshal", |b| {
         b.iter(|| {
-            let mut buf: Vec<u8> = vec![];
-            {
-                let mut writer = BufWriter::<&mut Vec<u8>>::new(buf.as_mut());
-                pkt.marshal(&mut writer).unwrap();
-            }
+            let mut buf = BytesMut::new();
+            let _ = pkt.marshal(&mut buf).unwrap();
         })
     });
 
     c.bench_function("Benchmark Unmarshal ", |b| {
         b.iter(|| {
-            let mut reader = BufReader::new(raw.as_slice());
-            let _ = Packet::unmarshal(&mut reader).unwrap();
+            let _ = Packet::unmarshal(&raw).unwrap();
         })
     });
 }

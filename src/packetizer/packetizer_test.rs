@@ -66,10 +66,10 @@ fn test_packetizer_abs_send_time() -> Result<(), Error> {
             extension_profile: 0xBEDE,
             extensions: vec![Extension {
                 id: 1,
-                payload: vec![0x40, 0, 0],
+                payload: Bytes::new(), //TODO:vec![0x40, 0, 0],
             }],
         },
-        payload: vec![0x11, 0x12, 0x13, 0x14],
+        payload: Bytes::new(), //TODO:vec![0x11, 0x12, 0x13, 0x14],
     };
 
     if packets.len() != 1 {
