@@ -11,7 +11,7 @@ fn test_packetizer() -> Result<(), Error> {
     let mut reader = BufReader::new(multiplepayload.as_slice());
 
     //use the G722 payloader here, because it's very simple and all 0s is valid G722 data.
-    let mut packetizer = PacketizerImpl::new(100, 98, 0x1234ABCD, 90000);
+    let mut packetizer = new_packetizer(100, 98, 0x1234ABCD, 90000, rand::random::<u32>(), None);
 
     let mut g722 = g722::G722Payloader;
     let seq = new_random_sequencer();
@@ -42,9 +42,7 @@ fn fixed_time_gen() -> Duration {
 #[test]
 fn test_packetizer_abs_send_time() -> Result<(), Error> {
     //use the G722 payloader here, because it's very simple and all 0s is valid G722 data.
-    let mut pktizer = PacketizerImpl::new(100, 98, 0x1234ABCD, 90000);
-    pktizer.timestamp = 45678;
-    pktizer.time_gen = Some(fixed_time_gen);
+    let mut pktizer = new_packetizer(100, 98, 0x1234ABCD, 90000, 45678, Some(fixed_time_gen));
     pktizer.enable_abs_send_time(1);
 
     let payload = vec![0x11, 0x12, 0x13, 0x14];

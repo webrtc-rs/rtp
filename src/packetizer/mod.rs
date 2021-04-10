@@ -44,17 +44,22 @@ struct PacketizerImpl {
     time_gen: Option<FnTimeGen>,
 }
 
-impl PacketizerImpl {
-    pub fn new(mtu: isize, payload_type: u8, ssrc: u32, clock_rate: u32) -> Self {
-        PacketizerImpl {
-            mtu,
-            payload_type,
-            ssrc,
-            timestamp: rand::random::<u32>(), //TODO: globalMathRandomGenerator?
-            clock_rate,
-            abs_send_time: 0,
-            time_gen: None,
-        }
+pub fn new_packetizer(
+    mtu: isize,
+    payload_type: u8,
+    ssrc: u32,
+    clock_rate: u32,
+    timestamp: u32,
+    time_gen: Option<FnTimeGen>,
+) -> impl Packetizer {
+    PacketizerImpl {
+        mtu,
+        payload_type,
+        ssrc,
+        timestamp,
+        clock_rate,
+        abs_send_time: 0,
+        time_gen,
     }
 }
 
