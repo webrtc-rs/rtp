@@ -25,7 +25,7 @@ fn benchmark_packet(c: &mut Criterion) {
         ..Default::default()
     };
     let mut raw = BytesMut::new();
-    let n = pkt.marshal(&mut raw).unwrap();
+    let n = pkt.marshal_to(&mut raw).unwrap();
     let raw = raw.freeze();
     let p = Packet::unmarshal(&raw).unwrap();
     if pkt != p {
@@ -37,10 +37,16 @@ fn benchmark_packet(c: &mut Criterion) {
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     let mut buf = BytesMut::with_capacity(pkt.size());
-    c.bench_function("Benchmark Marshal", |b| {
+    c.bench_function("Benchmark MarshalTo", |b| {
         b.iter(|| {
             buf.clear();
-            let _ = pkt.marshal(&mut buf).unwrap();
+            let _ = pkt.marshal_to(&mut buf).unwrap();
+        })
+    });
+
+    c.bench_function("Benchmark Marshal", |b| {
+        b.iter(|| {
+            let _ = pkt.marshal().unwrap();
         })
     });
 

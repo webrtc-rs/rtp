@@ -50,7 +50,7 @@ fn test_basic() -> Result<(), Error> {
     assert_eq!(packet.size(), raw_pkt.len(), "wrong computed marshal size");
 
     let mut raw = BytesMut::new();
-    let n = packet.marshal(&mut raw)?;
+    let n = packet.marshal_to(&mut raw)?;
     assert_eq!(n, raw_pkt.len(), "wrong marshal size");
 
     assert_eq!(
@@ -104,7 +104,7 @@ fn test_extension() -> Result<(), Error> {
     };
 
     let mut raw = BytesMut::new();
-    let result = packet.marshal(&mut raw);
+    let result = packet.marshal_to(&mut raw);
     assert!(
         result.is_err(),
         "Marshal did not error on packet with invalid extension length"
@@ -136,7 +136,7 @@ fn test_packet_marshal_unmarshal() -> Result<(), Error> {
         ..Default::default()
     };
     let mut raw = BytesMut::new();
-    let _ = pkt.marshal(&mut raw)?;
+    let _ = pkt.marshal_to(&mut raw)?;
 
     let raw = raw.freeze();
     let p = Packet::unmarshal(&raw)?;

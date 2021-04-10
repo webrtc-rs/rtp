@@ -1,7 +1,7 @@
 use crate::error::Error;
 use crate::header::*;
 
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::{Buf, BufMut, Bytes, BytesMut};
 use std::fmt;
 
 #[cfg(test)]
@@ -45,11 +45,17 @@ impl Packet {
         Ok(Packet { header, payload })
     }
 
-    // Marshal serializes the header and writes to the buffer.
-    pub fn marshal(&self, buf: &mut BytesMut) -> Result<usize, Error> {
-        let n = self.header.marshal(buf)?;
-        buf.put(&*self.payload);
+    // Marshal serializes the packet into bytes.
+    pub fn marshal(&self) -> Result<Bytes, Error> {
+        let mut buf = BytesMut::with_capacity(self.size());
+        let _ = self.marshal_to(&mut buf)?;
+        Ok(buf.freeze())
+    }
 
+    // MarshalTo serializes the packet and writes to the buffer.
+    pub fn marshal_to(&self, buf: &mut BytesMut) -> Result<usize, Error> {
+        let n = self.header.marshal_to(buf)?;
+        buf.put(&*self.payload);
         Ok(n + self.payload.len())
     }
 }
