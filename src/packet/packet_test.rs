@@ -43,11 +43,15 @@ fn test_basic() -> Result<(), Error> {
         packet, parsed_packet
     );
     assert_eq!(
-        packet.header.size(),
+        packet.header.marshal_size(),
         20,
         "wrong computed header marshal size"
     );
-    assert_eq!(packet.size(), raw_pkt.len(), "wrong computed marshal size");
+    assert_eq!(
+        packet.marshal_size(),
+        raw_pkt.len(),
+        "wrong computed marshal size"
+    );
 
     let mut raw = BytesMut::new();
     let n = packet.marshal_to(&mut raw)?;

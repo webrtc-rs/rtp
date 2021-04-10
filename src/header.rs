@@ -50,7 +50,7 @@ pub struct Header {
 
 impl Header {
     // MarshalSize returns the size of the packet once marshaled.
-    pub fn size(&self) -> usize {
+    pub fn marshal_size(&self) -> usize {
         let mut head_size = 12 + (self.csrc.len() * CSRC_LENGTH);
         if self.extension {
             let extension_payload_len = self.get_extension_payload_len();
@@ -313,7 +313,7 @@ impl Header {
     }
 
     pub fn marshal(&self) -> Result<Bytes, Error> {
-        let mut buf = BytesMut::with_capacity(self.size());
+        let mut buf = BytesMut::with_capacity(self.marshal_size());
         let _ = self.marshal_to(&mut buf)?;
         Ok(buf.freeze())
     }
