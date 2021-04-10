@@ -149,7 +149,8 @@ fn test_packet_marshal() -> Result<(), Error> {
         ..Default::default()
     };
 
-    for _ in 0..1_000_000 {
+    for _ in 0..1_000 {
+        //_000 {
         let mut raw: Vec<u8> = vec![];
         {
             let mut writer = BufWriter::<&mut Vec<u8>>::new(raw.as_mut());
@@ -188,7 +189,8 @@ fn test_packet_unmarshal() -> Result<(), Error> {
         pkt.marshal(&mut writer)?;
     }
 
-    for _ in 0..1_000_000 {
+    for _ in 0..1_000 {
+        //_000 {
         let mut reader = BufReader::new(raw.as_slice());
         let _ = Packet::unmarshal(&mut reader)?;
     }

@@ -21,7 +21,7 @@ pub trait Packetizer {
         &mut self,
         reader: &mut R,
         payloader: &mut P,
-        sequencer: &mut S,
+        sequencer: &S,
         samples: u32,
     ) -> Result<Vec<Packet>, Error>;
     fn enable_abs_send_time(&mut self, value: u8);
@@ -67,7 +67,7 @@ impl Packetizer for PacketizerImpl {
         &mut self,
         reader: &mut R,
         payloader: &mut P,
-        sequencer: &mut S,
+        sequencer: &S,
         samples: u32,
     ) -> Result<Vec<Packet>, Error> {
         let payloads = payloader.payload(self.mtu - 12, reader)?;

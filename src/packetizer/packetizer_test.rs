@@ -14,8 +14,8 @@ fn test_packetizer() -> Result<(), Error> {
     let mut packetizer = PacketizerImpl::new(100, 98, 0x1234ABCD, 90000);
 
     let mut g722 = g722::G722Payloader;
-    let mut seq = new_random_sequencer();
-    let packets = packetizer.packetize(&mut reader, &mut g722, &mut seq, 2000)?;
+    let seq = new_random_sequencer();
+    let packets = packetizer.packetize(&mut reader, &mut g722, &seq, 2000)?;
 
     if packets.len() != 2 {
         let mut packet_lengths = String::new();
@@ -51,8 +51,8 @@ fn test_packetizer_abs_send_time() -> Result<(), Error> {
     let mut reader = BufReader::new(payload.as_slice());
 
     let mut g722 = g722::G722Payloader;
-    let mut seq = new_fixed_sequencer(1234);
-    let packets = pktizer.packetize(&mut reader, &mut g722, &mut seq, 2000)?;
+    let seq = new_fixed_sequencer(1234);
+    let packets = pktizer.packetize(&mut reader, &mut g722, &seq, 2000)?;
 
     let expected = Packet {
         header: Header {
