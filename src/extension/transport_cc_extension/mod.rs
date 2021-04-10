@@ -17,11 +17,11 @@ mod transport_cc_extension_test;
 // |  ID   | L=1   |transport-wide sequence number | zero padding  |
 // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 #[derive(PartialEq, Debug)]
-pub struct TransportCCExtension {
+pub struct TransportCcExtension {
     transport_sequence: u16,
 }
 
-impl TransportCCExtension {
+impl TransportCcExtension {
     // Marshal serializes the members to buffer
     pub fn marshal<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
         writer.write_u16::<BigEndian>(self.transport_sequence)?;
@@ -33,6 +33,6 @@ impl TransportCCExtension {
     pub fn unmarshal<R: Read>(reader: &mut R) -> Result<Self, Error> {
         let transport_sequence = reader.read_u16::<BigEndian>()?;
 
-        Ok(TransportCCExtension { transport_sequence })
+        Ok(TransportCcExtension { transport_sequence })
     }
 }

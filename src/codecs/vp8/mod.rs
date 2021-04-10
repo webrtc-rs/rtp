@@ -10,9 +10,9 @@ mod vp8_test;
 
 const VP8HEADER_SIZE: isize = 1;
 
-pub struct VP8Payloader;
+pub struct Vp8Payloader;
 
-impl Payloader for VP8Payloader {
+impl Payloader for Vp8Payloader {
     fn payload<R: Read>(&self, mtu: isize, reader: &mut R) -> Result<Vec<Vec<u8>>, Error> {
         /*
          * https://tools.ietf.org/html/rfc7741#section-4.2
@@ -71,7 +71,7 @@ impl Payloader for VP8Payloader {
 }
 
 #[derive(Debug, Default)]
-struct VP8Packet {
+struct Vp8Packet {
     // Required Header
     x: u8,   /* extended controlbits present */
     n: u8,   /* (non-reference frame)  when set to 1 this frame can be discarded */
@@ -94,7 +94,7 @@ struct VP8Packet {
     payload: Vec<u8>,
 }
 
-impl Depacketizer for VP8Packet {
+impl Depacketizer for Vp8Packet {
     fn depacketize<R: Read>(&mut self, reader: &mut R) -> Result<(), Error> {
         //    0 1 2 3 4 5 6 7                      0 1 2 3 4 5 6 7
         //    +-+-+-+-+-+-+-+-+                   +-+-+-+-+-+-+-+-+

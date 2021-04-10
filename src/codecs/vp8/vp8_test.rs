@@ -4,7 +4,7 @@ use std::io::BufReader;
 
 #[test]
 fn test_vp8_unmarshal() -> Result<(), Error> {
-    let mut pck = VP8Packet::default();
+    let mut pck = Vp8Packet::default();
 
     // Empty packet
     let empty_bytes = vec![];
@@ -114,7 +114,7 @@ fn test_vp8_unmarshal() -> Result<(), Error> {
 
 #[test]
 fn test_vp8_payload() -> Result<(), Error> {
-    let pck = VP8Payloader;
+    let pck = Vp8Payloader;
     let empty = vec![];
     let payload = vec![0x90, 0x90, 0x90];
 

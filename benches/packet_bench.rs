@@ -18,7 +18,6 @@ fn benchmark_packet(c: &mut Criterion) {
                     payload: vec![5, 6],
                 },
             ],
-            payload_offset: 32,
             ..Default::default()
         },
         payload: vec![0xFFu8; 1500], //vec![0x07, 0x08, 0x09, 0x0a], //MTU=1500
@@ -27,7 +26,7 @@ fn benchmark_packet(c: &mut Criterion) {
     let mut raw: Vec<u8> = vec![];
     {
         let mut writer = BufWriter::<&mut Vec<u8>>::new(raw.as_mut());
-        pkt.marshal(&mut writer).unwrap()
+        pkt.marshal(&mut writer).unwrap();
     }
     let mut reader = BufReader::new(raw.as_slice());
     let p = Packet::unmarshal(&mut reader).unwrap();
@@ -45,7 +44,7 @@ fn benchmark_packet(c: &mut Criterion) {
             let mut buf: Vec<u8> = vec![];
             {
                 let mut writer = BufWriter::<&mut Vec<u8>>::new(buf.as_mut());
-                pkt.marshal(&mut writer).unwrap()
+                pkt.marshal(&mut writer).unwrap();
             }
         })
     });

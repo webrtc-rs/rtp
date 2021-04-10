@@ -34,7 +34,6 @@ fn test_basic() -> Result<(), Error> {
                 id: 0,
                 payload: vec![0xFF, 0xFF, 0xFF, 0xFF],
             }],
-            payload_offset: 20,
             ..Default::default()
         },
         payload: vec![0x98, 0x36, 0xbe, 0x88, 0x9e],
@@ -128,6 +127,76 @@ fn test_extension() -> Result<(), Error> {
 }
 
 #[test]
+fn test_packet_marshal() -> Result<(), Error> {
+    let pkt = Packet {
+        header: Header {
+            extension: true,
+            csrc: vec![1, 2],
+            extension_profile: EXTENSION_PROFILE_TWO_BYTE,
+            extensions: vec![
+                Extension {
+                    id: 1,
+                    payload: vec![3, 4],
+                },
+                Extension {
+                    id: 2,
+                    payload: vec![5, 6],
+                },
+            ],
+            ..Default::default()
+        },
+        payload: vec![0xFFu8; 1500], //vec![0x07, 0x08, 0x09, 0x0a], //MTU=1500
+        ..Default::default()
+    };
+
+    for _ in 0..1_000_000 {
+        let mut raw: Vec<u8> = vec![];
+        {
+            let mut writer = BufWriter::<&mut Vec<u8>>::new(raw.as_mut());
+            pkt.marshal(&mut writer)?;
+        }
+    }
+
+    Ok(())
+}
+
+#[test]
+fn test_packet_unmarshal() -> Result<(), Error> {
+    let pkt = Packet {
+        header: Header {
+            extension: true,
+            csrc: vec![1, 2],
+            extension_profile: EXTENSION_PROFILE_TWO_BYTE,
+            extensions: vec![
+                Extension {
+                    id: 1,
+                    payload: vec![3, 4],
+                },
+                Extension {
+                    id: 2,
+                    payload: vec![5, 6],
+                },
+            ],
+            ..Default::default()
+        },
+        payload: vec![0xFFu8; 1500], //vec![0x07, 0x08, 0x09, 0x0a], //MTU=1500
+        ..Default::default()
+    };
+    let mut raw: Vec<u8> = vec![];
+    {
+        let mut writer = BufWriter::<&mut Vec<u8>>::new(raw.as_mut());
+        pkt.marshal(&mut writer)?;
+    }
+
+    for _ in 0..1_000_000 {
+        let mut reader = BufReader::new(raw.as_slice());
+        let _ = Packet::unmarshal(&mut reader)?;
+    }
+
+    Ok(())
+}
+
+#[test]
 fn test_rfc8285_one_byte_extension() -> Result<(), Error> {
     let raw_pkt = vec![
         0x90, 0xe0, 0x69, 0x8f, 0xd9, 0xc2, 0x93, 0xda, 0x1c, 0x64, 0x27, 0x82, 0xBE, 0xDE, 0x00,
@@ -146,7 +215,6 @@ fn test_rfc8285_one_byte_extension() -> Result<(), Error> {
                 payload: vec![0xAA],
             }],
             version: 2,
-            payload_offset: 18,
             payload_type: 96,
             sequence_number: 27023,
             timestamp: 3653407706,
@@ -217,7 +285,6 @@ fn test_rfc8285one_byte_two_extension_of_two_bytes() -> Result<(), Error> {
                 },
             ],
             version: 2,
-            payload_offset: 26,
             payload_type: 96,
             sequence_number: 27023,
             timestamp: 3653407706,

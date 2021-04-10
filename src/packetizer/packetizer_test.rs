@@ -60,7 +60,6 @@ fn test_packetizer_abs_send_time() -> Result<(), Error> {
             padding: false,
             extension: true,
             marker: true,
-            payload_offset: 0, // not set by Packetize() at now
             payload_type: 98,
             sequence_number: 1234,
             timestamp: 45678,

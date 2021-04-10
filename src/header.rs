@@ -48,8 +48,6 @@ pub struct Header {
     pub csrc: Vec<u32>,
     pub extension_profile: u16,
     pub extensions: Vec<Extension>,
-
-    pub payload_offset: usize,
 }
 
 impl Header {
@@ -206,21 +204,21 @@ impl Header {
         let timestamp = reader.read_u32::<BigEndian>()?;
         let ssrc = reader.read_u32::<BigEndian>()?;
 
-        let mut payload_offset = CSRC_OFFSET + (cc * CSRC_LENGTH);
         let mut csrc = vec![];
         for _i in 0..cc {
             csrc.push(reader.read_u32::<BigEndian>()?);
         }
 
         let (extension_profile, extensions) = if extension {
+            //let mut payload_offset = CSRC_OFFSET + (cc * CSRC_LENGTH);
             let extension_profile = reader.read_u16::<BigEndian>()?;
-            payload_offset += 2;
+            //payload_offset += 2;
             let extension_length = reader.read_u16::<BigEndian>()? as usize * 4;
-            payload_offset += 2;
+            //payload_offset += 2;
 
             let mut payload = vec![0; extension_length];
             reader.read_exact(&mut payload)?;
-            payload_offset += payload.len();
+            //payload_offset += payload.len();
 
             let mut extensions = vec![];
             match extension_profile {
@@ -294,7 +292,6 @@ impl Header {
             csrc,
             extension_profile,
             extensions,
-            payload_offset,
         })
     }
 

@@ -6,7 +6,7 @@ use std::io::{BufReader, BufWriter};
 fn test_transport_cc_extension_too_small() -> Result<(), Error> {
     let raw: Vec<u8> = vec![];
     let mut reader = BufReader::new(raw.as_slice());
-    let result = TransportCCExtension::unmarshal(&mut reader);
+    let result = TransportCcExtension::unmarshal(&mut reader);
     assert!(result.is_err());
 
     Ok(())
@@ -16,8 +16,8 @@ fn test_transport_cc_extension_too_small() -> Result<(), Error> {
 fn test_transport_cc_extension() -> Result<(), Error> {
     let raw: Vec<u8> = vec![0x00, 0x02];
     let mut reader = BufReader::new(raw.as_slice());
-    let t1 = TransportCCExtension::unmarshal(&mut reader)?;
-    let t2 = TransportCCExtension {
+    let t1 = TransportCcExtension::unmarshal(&mut reader)?;
+    let t2 = TransportCcExtension {
         transport_sequence: 2,
     };
     assert_eq!(t1, t2);
@@ -36,8 +36,8 @@ fn test_transport_cc_extension() -> Result<(), Error> {
 fn test_transport_cc_extension_extra_bytes() -> Result<(), Error> {
     let raw: Vec<u8> = vec![0x00, 0x02, 0x00, 0xff, 0xff];
     let mut reader = BufReader::new(raw.as_slice());
-    let t1 = TransportCCExtension::unmarshal(&mut reader)?;
-    let t2 = TransportCCExtension {
+    let t1 = TransportCcExtension::unmarshal(&mut reader)?;
+    let t2 = TransportCcExtension {
         transport_sequence: 2,
     };
     assert_eq!(t1, t2);
