@@ -36,10 +36,10 @@ fn benchmark_packet(c: &mut Criterion) {
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-
+    let mut buf = BytesMut::with_capacity(pkt.size());
     c.bench_function("Benchmark Marshal", |b| {
         b.iter(|| {
-            let mut buf = BytesMut::new();
+            buf.clear();
             let _ = pkt.marshal(&mut buf).unwrap();
         })
     });
