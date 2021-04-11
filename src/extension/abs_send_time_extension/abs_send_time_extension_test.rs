@@ -1,11 +1,8 @@
 use super::*;
 
-use std::io::{BufReader, BufWriter};
-use std::time::Duration;
-
 use chrono::prelude::*;
-
 use std::ops::Sub;
+use std::time::Duration;
 
 const ABS_SEND_TIME_RESOLUTION: i128 = 1000;
 
@@ -56,13 +53,10 @@ fn test_abs_send_time_extension_roundtrip() -> Result<(), Error> {
     ];
 
     for test in &tests {
-        let mut raw: Vec<u8> = vec![];
-        {
-            let mut writer = BufWriter::<&mut Vec<u8>>::new(raw.as_mut());
-            test.marshal(&mut writer)?;
-        }
-        let mut reader = BufReader::new(raw.as_slice());
-        let out = AbsSendTimeExtension::unmarshal(&mut reader)?;
+        let mut raw = BytesMut::with_capacity(test.marshal_size());
+        test.marshal_to(&mut raw)?;
+        let raw = raw.freeze();
+        let out = AbsSendTimeExtension::unmarshal(&raw)?;
         assert_eq!(test.timestamp, out.timestamp);
     }
 
@@ -82,13 +76,10 @@ fn test_abs_send_time_extension_estimate() -> Result<(), Error> {
         let send = AbsSendTimeExtension {
             timestamp: send_ntp >> 14,
         };
-        let mut raw: Vec<u8> = vec![];
-        {
-            let mut writer = BufWriter::<&mut Vec<u8>>::new(raw.as_mut());
-            send.marshal(&mut writer)?;
-        }
-        let mut reader = BufReader::new(raw.as_slice());
-        let receive = AbsSendTimeExtension::unmarshal(&mut reader)?;
+        let mut raw = BytesMut::with_capacity(send.marshal_size());
+        send.marshal_to(&mut raw)?;
+        let raw = raw.freeze();
+        let receive = AbsSendTimeExtension::unmarshal(&raw)?;
 
         let estimated = receive.estimate(ntp2unix(receive_ntp));
         let diff = estimated.sub(in_time).as_nanos() as i128;

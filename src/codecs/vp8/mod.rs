@@ -1,19 +1,23 @@
 use crate::error::Error;
 use crate::packetizer::{Depacketizer, Payloader};
 
-use std::io::Read;
-
-use byteorder::ReadBytesExt;
+use bytes::{Buf, BufMut, Bytes, BytesMut};
 
 #[cfg(test)]
 mod vp8_test;
 
 const VP8HEADER_SIZE: isize = 1;
 
+/// Vp8Payloader payloads VP8 packets
 pub struct Vp8Payloader;
 
 impl Payloader for Vp8Payloader {
-    fn payload<R: Read>(&self, mtu: isize, reader: &mut R) -> Result<Vec<Vec<u8>>, Error> {
+    /// Payload fragments a VP8 packet across one or more byte arrays
+    fn payload(&self, mtu: usize, payload: &Bytes) -> Result<Vec<Bytes>, Error> {
+        if payload.is_empty() || mtu == 0 {
+            return Ok(vec![]);
+        }
+
         /*
          * https://tools.ietf.org/html/rfc7741#section-4.2
          *
@@ -35,12 +39,8 @@ impl Payloader for Vp8Payloader {
          *     first packet of each encoded frame.
          */
 
-        let max_fragment_size = mtu - VP8HEADER_SIZE;
-
-        let mut payload_data = vec![];
-        reader.read_to_end(&mut payload_data)?;
-        let mut payload_data_remaining = payload_data.len() as isize;
-
+        let max_fragment_size = mtu as isize - VP8HEADER_SIZE;
+        let mut payload_data_remaining = payload.len() as isize;
         let mut payload_data_index: usize = 0;
         let mut payloads = vec![];
 
@@ -52,15 +52,15 @@ impl Payloader for Vp8Payloader {
         while payload_data_remaining > 0 {
             let current_fragment_size =
                 std::cmp::min(max_fragment_size, payload_data_remaining) as usize;
-            let mut out = vec![];
-            if payload_data_index == 0 {
-                out.push(0x10);
+            let mut out = BytesMut::with_capacity(VP8HEADER_SIZE as usize + current_fragment_size);
+            if payload_data_remaining == payload.len() as isize {
+                out.put_u8(0x10);
             }
 
-            out.extend_from_slice(
-                &payload_data[payload_data_index..payload_data_index + current_fragment_size],
+            out.put(
+                &*payload.slice(payload_data_index..payload_data_index + current_fragment_size),
             );
-            payloads.push(out);
+            payloads.push(out.freeze());
 
             payload_data_remaining -= current_fragment_size as isize;
             payload_data_index += current_fragment_size;
@@ -70,32 +70,37 @@ impl Payloader for Vp8Payloader {
     }
 }
 
+/// Vp8Packet represents the VP8 header that is stored in the payload of an RTP Packet
 #[derive(Debug, Default)]
-struct Vp8Packet {
+pub struct Vp8Packet {
     // Required Header
-    x: u8,   /* extended controlbits present */
-    n: u8,   /* (non-reference frame)  when set to 1 this frame can be discarded */
-    s: u8,   /* start of VP8 partition */
-    pid: u8, /* partition index */
+    pub x: u8,   /* extended controlbits present */
+    pub n: u8,   /* (non-reference frame)  when set to 1 this frame can be discarded */
+    pub s: u8,   /* start of VP8 partition */
+    pub pid: u8, /* partition index */
 
     // Optional Header
-    i: u8, /* 1 if PictureID is present */
-    l: u8, /* 1 if TL0PICIDX is present */
-    t: u8, /* 1 if TID is present */
-    k: u8, /* 1 if KEYIDX is present */
+    pub i: u8, /* 1 if PictureID is present */
+    pub l: u8, /* 1 if TL0PICIDX is present */
+    pub t: u8, /* 1 if TID is present */
+    pub k: u8, /* 1 if KEYIDX is present */
 
-    picture_id: u16, /* 8 or 16 bits, picture ID */
-    tl0_pic_idx: u8, /* 8 bits temporal level zero index */
+    pub picture_id: u16, /* 8 or 16 bits, picture ID */
+    pub tl0_pic_idx: u8, /* 8 bits temporal level zero index */
 
-    tid: u8,
-    y: u8,
-    key_idx: u8,
+    pub tid: u8,
+    pub y: u8,
+    pub key_idx: u8,
 
-    payload: Vec<u8>,
+    pub payload: Bytes,
 }
 
 impl Depacketizer for Vp8Packet {
-    fn depacketize<R: Read>(&mut self, reader: &mut R) -> Result<(), Error> {
+    /// depacketize parses the passed byte slice and stores the result in the VP8Packet this method is called upon
+    fn depacketize(&mut self, packet: &Bytes) -> Result<(), Error> {
+        if packet.len() < 4 {
+            return Err(Error::ErrShortPacket);
+        }
         //    0 1 2 3 4 5 6 7                      0 1 2 3 4 5 6 7
         //    +-+-+-+-+-+-+-+-+                   +-+-+-+-+-+-+-+-+
         //    |X|R|N|S|R| PID | (REQUIRED)        |X|R|N|S|R| PID | (REQUIRED)
@@ -111,11 +116,11 @@ impl Depacketizer for Vp8Packet {
         //T/K:|TID|Y| KEYIDX  | (OPTIONAL)
         //    +-+-+-+-+-+-+-+-+
 
-        self.payload.clear();
-        let mut num_bytes = 0;
+        let reader = &mut packet.clone();
+        let mut payload_index = 0;
 
-        let mut b = reader.read_u8()?;
-        num_bytes += 1;
+        let mut b = reader.get_u8();
+        payload_index += 1;
 
         self.x = (b & 0x80) >> 7;
         self.n = (b & 0x20) >> 5;
@@ -123,8 +128,8 @@ impl Depacketizer for Vp8Packet {
         self.pid = b & 0x07;
 
         if self.x == 1 {
-            b = reader.read_u8()?;
-            num_bytes += 1;
+            b = reader.get_u8();
+            payload_index += 1;
             self.i = (b & 0x80) >> 7;
             self.l = (b & 0x40) >> 6;
             self.t = (b & 0x20) >> 5;
@@ -137,42 +142,37 @@ impl Depacketizer for Vp8Packet {
         }
 
         if self.i == 1 {
-            b = reader.read_u8()?;
-            num_bytes += 1;
+            b = reader.get_u8();
+            payload_index += 1;
             // PID present?
             if b & 0x80 > 0 {
                 // M == 1, PID is 16bit
-                self.picture_id = (((b & 0x7f) as u16) << 8) | (reader.read_u8()? as u16);
-                num_bytes += 1;
+                self.picture_id = (((b & 0x7f) as u16) << 8) | (reader.get_u8() as u16);
+                payload_index += 1;
             } else {
                 self.picture_id = b as u16;
             }
         }
 
         if self.l == 1 {
-            self.tl0_pic_idx = reader.read_u8()?;
-            num_bytes += 1;
+            self.tl0_pic_idx = reader.get_u8();
+            payload_index += 1;
         }
 
         if self.t == 1 || self.k == 1 {
-            b = reader.read_u8()?;
-            num_bytes += 1;
+            b = reader.get_u8();
+            payload_index += 1;
             self.tid = (b & 0b11000000) >> 6;
             self.y = (b & 0b00100000) >> 5;
             self.key_idx = b & 0b00011111;
         }
 
-        while num_bytes < 3 {
-            reader.read_u8()?;
-            num_bytes += 1;
+        if payload_index >= packet.len() {
+            return Err(Error::ErrShortPacket);
         }
 
-        reader.read_to_end(&mut self.payload)?;
+        self.payload = packet.slice(payload_index..);
 
-        if self.payload.is_empty() {
-            Err(Error::PayloadIsNotLargeEnough)
-        } else {
-            Ok(())
-        }
+        Ok(())
     }
 }

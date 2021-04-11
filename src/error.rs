@@ -3,28 +3,39 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("RTP header size insufficient")]
-    errHeaderSizeInsufficient,
+    ErrHeaderSizeInsufficient,
     #[error("RTP header size insufficient for extension")]
-    errHeaderSizeInsufficientForExtension,
+    ErrHeaderSizeInsufficientForExtension,
     #[error("buffer too small")]
-    errTooSmall,
+    ErrTooSmall,
     #[error("extension not enabled")]
-    errHeaderExtensionsNotEnabled,
+    ErrHeaderExtensionsNotEnabled,
     #[error("extension not found")]
-    errHeaderExtensionNotFound,
+    ErrHeaderExtensionNotFound,
 
     #[error("header extension id must be between 1 and 14 for RFC 5285 extensions")]
-    errRFC8285OneByteHeaderIDRange,
+    ErrRfc8285oneByteHeaderIdrange,
     #[error("header extension payload must be 16bytes or less for RFC 5285 one byte extensions")]
-    errRFC8285OneByteHeaderSize,
+    ErrRfc8285oneByteHeaderSize,
 
     #[error("header extension id must be between 1 and 255 for RFC 5285 extensions")]
-    errRFC8285TwoByteHeaderIDRange,
+    ErrRfc8285twoByteHeaderIdrange,
     #[error("header extension payload must be 255bytes or less for RFC 5285 two byte extensions")]
-    errRFC8285TwoByteHeaderSize,
+    ErrRfc8285twoByteHeaderSize,
 
     #[error("header extension id must be 0 for none RFC 5285 extensions")]
-    errRFC3550HeaderIDRange,
+    ErrRfc3550headerIdrange,
+
+    #[error("packet is not large enough")]
+    ErrShortPacket,
+    #[error("invalid nil packet")]
+    ErrNilPacket,
+    #[error("too many PDiff")]
+    ErrTooManyPDiff,
+    #[error("too many spatial layers")]
+    ErrTooManySpatialLayers,
+    #[error("NALU Type is unhandled")]
+    ErrUnhandledNaluType,
 
     #[error("extension_payload must be in 32-bit words")]
     HeaderExtensionPayloadNot32BitWords,

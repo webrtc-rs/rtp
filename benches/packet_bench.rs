@@ -1,7 +1,6 @@
 use bytes::{Bytes, BytesMut};
 use criterion::{criterion_group, criterion_main, Criterion};
-use std::io::{BufReader, BufWriter};
-use webrtc_rtp::{header::*, packet::*};
+use webrtc_rtp::{header::*, packet::*, packetizer::*};
 
 fn benchmark_packet(c: &mut Criterion) {
     let pkt = Packet {
@@ -25,7 +24,7 @@ fn benchmark_packet(c: &mut Criterion) {
         ..Default::default()
     };
     let mut raw = BytesMut::new();
-    let n = pkt.marshal_to(&mut raw).unwrap();
+    let _ = pkt.marshal_to(&mut raw).unwrap();
     let raw = raw.freeze();
     let p = Packet::unmarshal(&raw).unwrap();
     if pkt != p {

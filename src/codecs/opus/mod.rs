@@ -1,7 +1,7 @@
 use crate::error::Error;
 use crate::packetizer::{Depacketizer, Payloader};
 
-use std::io::Read;
+use bytes::Bytes;
 
 #[cfg(test)]
 mod opus_test;
@@ -9,29 +9,27 @@ mod opus_test;
 pub struct OpusPayloader;
 
 impl Payloader for OpusPayloader {
-    fn payload<R: Read>(&self, _mtu: isize, reader: &mut R) -> Result<Vec<Vec<u8>>, Error> {
-        let mut payload = vec![];
-        reader.read_to_end(&mut payload)?;
-        if payload.is_empty() {
-            Ok(vec![])
-        } else {
-            Ok(vec![payload])
+    fn payload(&self, mtu: usize, payload: &Bytes) -> Result<Vec<Bytes>, Error> {
+        if payload.is_empty() || mtu == 0 {
+            return Ok(vec![]);
         }
+
+        Ok(vec![payload.clone()])
     }
 }
 
+/// OpusPacket represents the Opus header that is stored in the payload of an RTP Packet
 #[derive(Debug, Default)]
 pub struct OpusPacket {
-    payload: Vec<u8>,
+    pub payload: Bytes,
 }
 
 impl Depacketizer for OpusPacket {
-    fn depacketize<R: Read>(&mut self, reader: &mut R) -> Result<(), Error> {
-        self.payload.clear();
-        reader.read_to_end(&mut self.payload)?;
-        if self.payload.is_empty() {
-            Err(Error::PayloadIsNotLargeEnough)
+    fn depacketize(&mut self, packet: &Bytes) -> Result<(), Error> {
+        if packet.is_empty() {
+            Err(Error::ErrShortPacket)
         } else {
+            self.payload = packet.clone();
             Ok(())
         }
     }

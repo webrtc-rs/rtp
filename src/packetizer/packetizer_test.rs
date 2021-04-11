@@ -2,20 +2,17 @@ use super::*;
 use crate::codecs::*;
 
 use chrono::prelude::*;
-use std::io::BufReader;
 use std::time::Duration;
 
 #[test]
 fn test_packetizer() -> Result<(), Error> {
-    let multiplepayload = vec![0; 128];
-    let mut reader = BufReader::new(multiplepayload.as_slice());
+    let multiple_payload = Bytes::from_static(&[0; 128]);
+    let g722 = g7xx::G722Payloader {};
+    let seq = new_random_sequencer();
 
     //use the G722 payloader here, because it's very simple and all 0s is valid G722 data.
-    let mut packetizer = new_packetizer(100, 98, 0x1234ABCD, 90000, rand::random::<u32>(), None);
-
-    let mut g722 = g722::G722Payloader;
-    let seq = new_random_sequencer();
-    let packets = packetizer.packetize(&mut reader, &mut g722, &seq, 2000)?;
+    let mut packetizer = new_packetizer(100, 98, 0x1234ABCD, g722, seq, 90000);
+    let packets = packetizer.packetize(&multiple_payload, 2000)?;
 
     if packets.len() != 2 {
         let mut packet_lengths = String::new();
@@ -41,16 +38,25 @@ fn fixed_time_gen() -> Duration {
 
 #[test]
 fn test_packetizer_abs_send_time() -> Result<(), Error> {
+    let g722 = g7xx::G722Payloader {};
+    let sequencer = new_fixed_sequencer(1234);
+
     //use the G722 payloader here, because it's very simple and all 0s is valid G722 data.
-    let mut pktizer = new_packetizer(100, 98, 0x1234ABCD, 90000, 45678, Some(fixed_time_gen));
+    let mut pktizer = PacketizerImpl {
+        mtu: 100,
+        payload_type: 98,
+        ssrc: 0x1234ABCD,
+        payloader: g722,
+        sequencer,
+        timestamp: 45678,
+        clock_rate: 90000,
+        abs_send_time: 0,
+        time_gen: Some(fixed_time_gen),
+    };
     pktizer.enable_abs_send_time(1);
 
-    let payload = vec![0x11, 0x12, 0x13, 0x14];
-    let mut reader = BufReader::new(payload.as_slice());
-
-    let mut g722 = g722::G722Payloader;
-    let seq = new_fixed_sequencer(1234);
-    let packets = pktizer.packetize(&mut reader, &mut g722, &seq, 2000)?;
+    let payload = Bytes::from_static(&[0x11, 0x12, 0x13, 0x14]);
+    let packets = pktizer.packetize(&payload, 2000)?;
 
     let expected = Packet {
         header: Header {
@@ -66,10 +72,10 @@ fn test_packetizer_abs_send_time() -> Result<(), Error> {
             extension_profile: 0xBEDE,
             extensions: vec![Extension {
                 id: 1,
-                payload: Bytes::new(), //TODO:vec![0x40, 0, 0],
+                payload: Bytes::from_static(&[0x40, 0, 0]),
             }],
         },
-        payload: Bytes::new(), //TODO:vec![0x11, 0x12, 0x13, 0x14],
+        payload: Bytes::from_static(&[0x11, 0x12, 0x13, 0x14]),
     };
 
     if packets.len() != 1 {

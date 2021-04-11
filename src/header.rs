@@ -1,5 +1,6 @@
 use crate::error::*;
 
+use crate::packetizer::Marshaller;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 
 const HEADER_LENGTH: usize = 4;
@@ -31,8 +32,8 @@ pub struct Extension {
     pub payload: Bytes,
 }
 
-// Header represents an RTP packet header
-// NOTE: PayloadOffset is populated by Marshal/Unmarshal and should not be modified
+/// Header represents an RTP packet header
+/// NOTE: PayloadOffset is populated by Marshal/Unmarshal and should not be modified
 #[derive(Debug, Eq, PartialEq, Default)]
 pub struct Header {
     pub version: u8,
@@ -48,126 +49,11 @@ pub struct Header {
     pub extensions: Vec<Extension>,
 }
 
-impl Header {
-    // MarshalSize returns the size of the packet once marshaled.
-    pub fn marshal_size(&self) -> usize {
-        let mut head_size = 12 + (self.csrc.len() * CSRC_LENGTH);
-        if self.extension {
-            let extension_payload_len = self.get_extension_payload_len();
-            let extension_payload_size = (extension_payload_len + 3) / 4;
-            head_size += 4 + extension_payload_size * 4;
-        }
-        head_size
-    }
-
-    fn get_extension_payload_len(&self) -> usize {
-        let mut extension_length = 0;
-        match self.extension_profile {
-            EXTENSION_PROFILE_ONE_BYTE => {
-                for extension in &self.extensions {
-                    extension_length += 1 + extension.payload.len();
-                }
-            }
-            EXTENSION_PROFILE_TWO_BYTE => {
-                for extension in &self.extensions {
-                    extension_length += 2 + extension.payload.len();
-                }
-            }
-            _ => {
-                for extension in &self.extensions {
-                    extension_length += extension.payload.len();
-                }
-            }
-        };
-
-        extension_length
-    }
-
-    // SetExtension sets an RTP header extension
-    pub fn set_extension(&mut self, id: u8, payload: Bytes) -> Result<(), Error> {
-        if self.extension {
-            match self.extension_profile {
-                EXTENSION_PROFILE_ONE_BYTE => {
-                    if !(1..=14).contains(&id) {
-                        return Err(Error::errRFC8285OneByteHeaderIDRange);
-                    }
-                    if payload.len() > 16 {
-                        return Err(Error::errRFC8285OneByteHeaderSize);
-                    }
-                }
-                EXTENSION_PROFILE_TWO_BYTE => {
-                    if id < 1 {
-                        return Err(Error::errRFC8285TwoByteHeaderIDRange);
-                    }
-                    if payload.len() > 255 {
-                        return Err(Error::errRFC8285TwoByteHeaderSize);
-                    }
-                }
-                _ => {
-                    if id != 0 {
-                        return Err(Error::errRFC3550HeaderIDRange);
-                    }
-                }
-            };
-
-            // Update existing if it exists else add new extension
-            for extension in &mut self.extensions {
-                if extension.id == id {
-                    extension.payload = payload;
-                    return Ok(());
-                }
-            }
-            self.extensions.push(Extension { id, payload });
-            return Ok(());
-        }
-
-        // No existing header extensions
-        self.extension = true;
-
-        let len = payload.len();
-        if len <= 16 {
-            self.extension_profile = EXTENSION_PROFILE_ONE_BYTE
-        } else if len > 16 && len < 256 {
-            self.extension_profile = EXTENSION_PROFILE_TWO_BYTE
-        }
-
-        self.extensions.push(Extension { id, payload });
-
-        Ok(())
-    }
-
-    // returns an RTP header extension
-    pub fn get_extension(&self, id: u8) -> Option<Bytes> {
-        if !self.extension {
-            return None;
-        }
-
-        for extension in &self.extensions {
-            if extension.id == id {
-                return Some(extension.payload.clone());
-            }
-        }
-        None
-    }
-
-    // Removes an RTP Header extension
-    pub fn del_extension(&mut self, id: u8) -> Result<(), Error> {
-        if !self.extension {
-            return Err(Error::errHeaderExtensionsNotEnabled);
-        }
-        for index in 0..self.extensions.len() {
-            if self.extensions[index].id == id {
-                self.extensions.remove(index);
-                return Ok(());
-            }
-        }
-        Err(Error::errHeaderExtensionNotFound)
-    }
-
-    // Unmarshal parses the passed byte slice and stores the result in the Header this method is called upon
-    pub fn unmarshal(raw_packet: &Bytes) -> Result<Self, Error> {
+impl Marshaller for Header {
+    /// Unmarshal parses the passed byte slice and stores the result in the Header this method is called upon
+    fn unmarshal(raw_packet: &Bytes) -> Result<Self, Error> {
         if raw_packet.len() < HEADER_LENGTH {
-            return Err(Error::errHeaderSizeInsufficient);
+            return Err(Error::ErrHeaderSizeInsufficient);
         }
         /*
          *  0                   1                   2                   3
@@ -193,7 +79,7 @@ impl Header {
 
         let mut curr_offset = CSRC_OFFSET + (cc * CSRC_LENGTH);
         if raw_packet.len() < curr_offset {
-            return Err(Error::errHeaderSizeInsufficient);
+            return Err(Error::ErrHeaderSizeInsufficient);
         }
 
         let b1 = reader.get_u8();
@@ -212,7 +98,7 @@ impl Header {
         let (extension_profile, extensions) = if extension {
             let expected = curr_offset + 4;
             if raw_packet.len() < expected {
-                return Err(Error::errHeaderSizeInsufficientForExtension);
+                return Err(Error::ErrHeaderSizeInsufficientForExtension);
             }
             let extension_profile = reader.get_u16();
             curr_offset += 2;
@@ -221,7 +107,7 @@ impl Header {
 
             let expected = curr_offset + extension_length;
             if raw_packet.len() < expected {
-                return Err(Error::errHeaderSizeInsufficientForExtension);
+                return Err(Error::ErrHeaderSizeInsufficientForExtension);
             }
 
             let mut extensions = vec![];
@@ -281,7 +167,7 @@ impl Header {
                 // RFC3550 Extension
                 _ => {
                     if raw_packet.len() < curr_offset + extension_length {
-                        return Err(Error::errHeaderSizeInsufficientForExtension);
+                        return Err(Error::ErrHeaderSizeInsufficientForExtension);
                     }
                     extensions.push(Extension {
                         id: 0,
@@ -312,14 +198,19 @@ impl Header {
         })
     }
 
-    pub fn marshal(&self) -> Result<Bytes, Error> {
-        let mut buf = BytesMut::with_capacity(self.marshal_size());
-        let _ = self.marshal_to(&mut buf)?;
-        Ok(buf.freeze())
+    /// MarshalSize returns the size of the packet once marshaled.
+    fn marshal_size(&self) -> usize {
+        let mut head_size = 12 + (self.csrc.len() * CSRC_LENGTH);
+        if self.extension {
+            let extension_payload_len = self.get_extension_payload_len();
+            let extension_payload_size = (extension_payload_len + 3) / 4;
+            head_size += 4 + extension_payload_size * 4;
+        }
+        head_size
     }
 
-    // Marshal serializes the header and writes to the buffer.
-    pub fn marshal_to(&self, buf: &mut BytesMut) -> Result<usize, Error> {
+    /// Marshal serializes the header and writes to the buffer.
+    fn marshal_to(&self, buf: &mut BytesMut) -> Result<usize, Error> {
         /*
          *  0                   1                   2                   3
          *  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
@@ -405,7 +296,7 @@ impl Header {
                 // RFC3550 Extension
                 _ => {
                     if self.extensions.len() != 1 {
-                        return Err(Error::errRFC3550HeaderIDRange);
+                        return Err(Error::ErrRfc3550headerIdrange);
                     }
 
                     if let Some(extension) = self.extensions.first() {
@@ -427,5 +318,111 @@ impl Header {
         }
 
         Ok(n)
+    }
+}
+
+impl Header {
+    fn get_extension_payload_len(&self) -> usize {
+        let mut extension_length = 0;
+        match self.extension_profile {
+            EXTENSION_PROFILE_ONE_BYTE => {
+                for extension in &self.extensions {
+                    extension_length += 1 + extension.payload.len();
+                }
+            }
+            EXTENSION_PROFILE_TWO_BYTE => {
+                for extension in &self.extensions {
+                    extension_length += 2 + extension.payload.len();
+                }
+            }
+            _ => {
+                for extension in &self.extensions {
+                    extension_length += extension.payload.len();
+                }
+            }
+        };
+
+        extension_length
+    }
+
+    /// SetExtension sets an RTP header extension
+    pub fn set_extension(&mut self, id: u8, payload: Bytes) -> Result<(), Error> {
+        if self.extension {
+            match self.extension_profile {
+                EXTENSION_PROFILE_ONE_BYTE => {
+                    if !(1..=14).contains(&id) {
+                        return Err(Error::ErrRfc8285oneByteHeaderIdrange);
+                    }
+                    if payload.len() > 16 {
+                        return Err(Error::ErrRfc8285oneByteHeaderSize);
+                    }
+                }
+                EXTENSION_PROFILE_TWO_BYTE => {
+                    if id < 1 {
+                        return Err(Error::ErrRfc8285twoByteHeaderIdrange);
+                    }
+                    if payload.len() > 255 {
+                        return Err(Error::ErrRfc8285twoByteHeaderSize);
+                    }
+                }
+                _ => {
+                    if id != 0 {
+                        return Err(Error::ErrRfc3550headerIdrange);
+                    }
+                }
+            };
+
+            // Update existing if it exists else add new extension
+            for extension in &mut self.extensions {
+                if extension.id == id {
+                    extension.payload = payload;
+                    return Ok(());
+                }
+            }
+            self.extensions.push(Extension { id, payload });
+            return Ok(());
+        }
+
+        // No existing header extensions
+        self.extension = true;
+
+        let len = payload.len();
+        if len <= 16 {
+            self.extension_profile = EXTENSION_PROFILE_ONE_BYTE
+        } else if len > 16 && len < 256 {
+            self.extension_profile = EXTENSION_PROFILE_TWO_BYTE
+        }
+
+        self.extensions.push(Extension { id, payload });
+
+        Ok(())
+    }
+
+    /// returns an RTP header extension
+    pub fn get_extension(&self, id: u8) -> Option<Bytes> {
+        if !self.extension {
+            return None;
+        }
+
+        for extension in &self.extensions {
+            if extension.id == id {
+                return Some(extension.payload.clone());
+            }
+        }
+        None
+    }
+
+    /// Removes an RTP Header extension
+    pub fn del_extension(&mut self, id: u8) -> Result<(), Error> {
+        if !self.extension {
+            return Err(Error::ErrHeaderExtensionsNotEnabled);
+        }
+        for index in 0..self.extensions.len() {
+            if self.extensions[index].id == id {
+                self.extensions.remove(index);
+                return Ok(());
+            }
+        }
+        Err(Error::ErrHeaderExtensionNotFound)
     }
 }

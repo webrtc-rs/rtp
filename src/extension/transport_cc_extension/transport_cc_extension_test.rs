@@ -1,12 +1,9 @@
 use super::*;
 
-use std::io::{BufReader, BufWriter};
-
 #[test]
 fn test_transport_cc_extension_too_small() -> Result<(), Error> {
-    let raw: Vec<u8> = vec![];
-    let mut reader = BufReader::new(raw.as_slice());
-    let result = TransportCcExtension::unmarshal(&mut reader);
+    let raw = Bytes::from_static(&[]);
+    let result = TransportCcExtension::unmarshal(&raw);
     assert!(result.is_err());
 
     Ok(())
@@ -14,29 +11,24 @@ fn test_transport_cc_extension_too_small() -> Result<(), Error> {
 
 #[test]
 fn test_transport_cc_extension() -> Result<(), Error> {
-    let raw: Vec<u8> = vec![0x00, 0x02];
-    let mut reader = BufReader::new(raw.as_slice());
-    let t1 = TransportCcExtension::unmarshal(&mut reader)?;
+    let raw = Bytes::from_static(&[0x00, 0x02]);
+    let t1 = TransportCcExtension::unmarshal(&raw)?;
     let t2 = TransportCcExtension {
         transport_sequence: 2,
     };
     assert_eq!(t1, t2);
 
-    let mut dst: Vec<u8> = vec![];
-    {
-        let mut writer = BufWriter::<&mut Vec<u8>>::new(dst.as_mut());
-        t2.marshal(&mut writer)?;
-    }
-    assert_eq!(raw, dst);
+    let mut dst = BytesMut::with_capacity(t2.marshal_size());
+    t2.marshal_to(&mut dst)?;
+    assert_eq!(raw, dst.freeze());
 
     Ok(())
 }
 
 #[test]
 fn test_transport_cc_extension_extra_bytes() -> Result<(), Error> {
-    let raw: Vec<u8> = vec![0x00, 0x02, 0x00, 0xff, 0xff];
-    let mut reader = BufReader::new(raw.as_slice());
-    let t1 = TransportCcExtension::unmarshal(&mut reader)?;
+    let raw = Bytes::from_static(&[0x00, 0x02, 0x00, 0xff, 0xff]);
+    let t1 = TransportCcExtension::unmarshal(&raw)?;
     let t2 = TransportCcExtension {
         transport_sequence: 2,
     };

@@ -1,7 +1,5 @@
 use super::*;
 
-use std::io::{BufReader, BufWriter};
-
 #[test]
 fn test_basic() -> Result<(), Error> {
     let empty_bytes = Bytes::new();
@@ -149,15 +147,14 @@ fn test_packet_marshal_unmarshal() -> Result<(), Error> {
 
     Ok(())
 }
-/*
+
 #[test]
 fn test_rfc8285_one_byte_extension() -> Result<(), Error> {
-    let raw_pkt = vec![
+    let raw_pkt = Bytes::from_static(&[
         0x90, 0xe0, 0x69, 0x8f, 0xd9, 0xc2, 0x93, 0xda, 0x1c, 0x64, 0x27, 0x82, 0xBE, 0xDE, 0x00,
         0x01, 0x50, 0xAA, 0x00, 0x00, 0x98, 0x36, 0xbe, 0x88, 0x9e,
-    ];
-    let mut reader = BufReader::new(raw_pkt.as_slice());
-    Packet::unmarshal(&mut reader)?;
+    ]);
+    Packet::unmarshal(&raw_pkt)?;
 
     let p = Packet {
         header: Header {
@@ -166,7 +163,7 @@ fn test_rfc8285_one_byte_extension() -> Result<(), Error> {
             extension_profile: 0xBEDE,
             extensions: vec![Extension {
                 id: 5,
-                payload: vec![0xAA],
+                payload: Bytes::from_static(&[0xAA]),
             }],
             version: 2,
             payload_type: 96,
@@ -176,14 +173,11 @@ fn test_rfc8285_one_byte_extension() -> Result<(), Error> {
             csrc: vec![],
             ..Default::default()
         },
-        payload: raw_pkt[20..].to_vec(),
+        payload: raw_pkt.slice(20..),
     };
 
-    let mut dst: Vec<u8> = vec![];
-    {
-        let mut writer = BufWriter::<&mut Vec<u8>>::new(dst.as_mut());
-        p.marshal(&mut writer)?;
-    }
+    let mut dst = BytesMut::new();
+    let _ = p.marshal_to(&mut dst)?;
     assert_eq!(dst, raw_pkt);
 
     Ok(())
@@ -198,16 +192,15 @@ fn test_rfc8285one_byte_two_extension_of_two_bytes() -> Result<(), Error> {
     // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
     // |  ID   | L=0   |     data      |  ID   |  L=0  |   data...
     // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    let raw_pkt = vec![
+    let raw_pkt = Bytes::from_static(&[
         0x90, 0xe0, 0x69, 0x8f, 0xd9, 0xc2, 0x93, 0xda, 0x1c, 0x64, 0x27, 0x82, 0xBE, 0xDE, 0x00,
         0x01, 0x10, 0xAA, 0x20, 0xBB, // Payload
         0x98, 0x36, 0xbe, 0x88, 0x9e,
-    ];
-    let mut reader = BufReader::new(raw_pkt.as_slice());
-    let p = Packet::unmarshal(&mut reader)?;
+    ]);
+    let p = Packet::unmarshal(&raw_pkt)?;
 
     let ext1 = p.header.get_extension(1);
-    let ext1_expect = &[0xAA];
+    let ext1_expect = Bytes::from_static(&[0xAA]);
     if let Some(ext1) = ext1 {
         assert_eq!(ext1, ext1_expect);
     } else {
@@ -215,7 +208,7 @@ fn test_rfc8285one_byte_two_extension_of_two_bytes() -> Result<(), Error> {
     }
 
     let ext2 = p.header.get_extension(2);
-    let ext2_expect = [0xBB];
+    let ext2_expect = Bytes::from_static(&[0xBB]);
     if let Some(ext2) = ext2 {
         assert_eq!(ext2, ext2_expect);
     } else {
@@ -231,11 +224,11 @@ fn test_rfc8285one_byte_two_extension_of_two_bytes() -> Result<(), Error> {
             extensions: vec![
                 Extension {
                     id: 1,
-                    payload: vec![0xAA],
+                    payload: Bytes::from_static(&[0xAA]),
                 },
                 Extension {
                     id: 2,
-                    payload: vec![0xBB],
+                    payload: Bytes::from_static(&[0xBB]),
                 },
             ],
             version: 2,
@@ -246,21 +239,18 @@ fn test_rfc8285one_byte_two_extension_of_two_bytes() -> Result<(), Error> {
             csrc: vec![],
             ..Default::default()
         },
-        payload: raw_pkt[20..].to_vec(),
+        payload: raw_pkt.slice(20..),
     };
 
-    let mut dst: Vec<u8> = vec![];
-    {
-        let mut writer = BufWriter::<&mut Vec<u8>>::new(dst.as_mut());
-        p.marshal(&mut writer)?;
-    }
+    let mut dst = BytesMut::new();
+    let _ = p.marshal_to(&mut dst)?;
     assert_eq!(dst, raw_pkt);
 
     Ok(())
 }
 
 #[test]
-fn test_rfc8285_one_byte_multiple_extensions_with_padding() {
+fn test_rfc8285_one_byte_multiple_extensions_with_padding() -> Result<(), Error> {
     //  0                   1                   2                   3
     //  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
     // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -273,22 +263,20 @@ fn test_rfc8285_one_byte_multiple_extensions_with_padding() {
     // |                          data                                 |
     // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
-    let raw_pkt: Vec<u8> = vec![
+    let raw_pkt = Bytes::from_static(&[
         0x90, 0xe0, 0x69, 0x8f, 0xd9, 0xc2, 0x93, 0xda, 0x1c, 0x64, 0x27, 0x82, 0xBE, 0xDE, 0x00,
         0x03, 0x10, 0xAA, 0x21, 0xBB, 0xBB, 0x00, 0x00, 0x33, 0xCC, 0xCC, 0xCC, 0xCC,
         // Payload
         0x98, 0x36, 0xbe, 0x88, 0x9e,
-    ];
+    ]);
 
-    let packet = Packet::unmarshal(&mut BufReader::new(raw_pkt.as_slice()))
-        .expect("Error unmarshalling packets");
-
+    let packet = Packet::unmarshal(&raw_pkt)?;
     let ext1 = packet
         .header
         .get_extension(1)
         .expect("Error getting header extension.");
 
-    let ext1_expect: [u8; 1] = [0xAA];
+    let ext1_expect = Bytes::from_static(&[0xAA]);
     assert_eq!(ext1, ext1_expect);
 
     let ext2 = packet
@@ -296,7 +284,7 @@ fn test_rfc8285_one_byte_multiple_extensions_with_padding() {
         .get_extension(2)
         .expect("Error getting header extension.");
 
-    let ext2_expect: [u8; 2] = [0xBB, 0xBB];
+    let ext2_expect = Bytes::from_static(&[0xBB, 0xBB]);
     assert_eq!(ext2, ext2_expect);
 
     let ext3 = packet
@@ -304,32 +292,28 @@ fn test_rfc8285_one_byte_multiple_extensions_with_padding() {
         .get_extension(3)
         .expect("Error getting header extension.");
 
-    let ext3_expect: [u8; 4] = [0xCC, 0xCC, 0xCC, 0xCC];
+    let ext3_expect = Bytes::from_static(&[0xCC, 0xCC, 0xCC, 0xCC]);
     assert_eq!(ext3, ext3_expect);
 
-    let mut dst_buf: Vec<Vec<u8>> = vec![vec![0u8; 1000], vec![0xFF; 1000], vec![0xAA; 2]];
+    let mut dst_buf: Vec<BytesMut> = vec![
+        BytesMut::with_capacity(1000),
+        BytesMut::with_capacity(1000),
+        BytesMut::with_capacity(2),
+    ];
 
-    let raw_pkg_marshal: [u8; 33] = [
+    let raw_pkg_marshal = Bytes::from_static(&[
         0x90, 0xe0, 0x69, 0x8f, 0xd9, 0xc2, 0x93, 0xda, 0x1c, 0x64, 0x27, 0x82, 0xBE, 0xDE, 0x00,
         0x03, 0x10, 0xAA, 0x21, 0xBB, 0xBB, 0x33, 0xCC, 0xCC, 0xCC, 0xCC, 0x00, 0x00,
         // padding is moved to the end by re-marshaling
         // Payload
         0x98, 0x36, 0xbe, 0x88, 0x9e,
-    ];
+    ]);
 
-    let checker = |name: &str, buf: &mut Vec<u8>, p: &Packet| {
-        {
-            // NOTE: buf.as_mut_slice() won't increase buf size.
-            // If buf size is not big enough, it will be silent and won't report error
-            let mut writer = BufWriter::new(buf.as_mut_slice());
-            p.marshal(&mut writer).expect("Error marshalling byte");
-        }
-
-        //println!("{:?}", &buf[..raw_pkg_marshal.len()]);
-
+    let checker = |name: &str, buf: &mut BytesMut, p: &Packet| {
+        let _ = p.marshal_to(buf).unwrap();
+        let dst = buf.clone().freeze();
         assert_eq!(
-            &buf[..p.size()],
-            &raw_pkg_marshal[..],
+            dst, raw_pkg_marshal,
             "Marshalled fields are not equal for {}.",
             name
         );
@@ -338,16 +322,11 @@ fn test_rfc8285_one_byte_multiple_extensions_with_padding() {
     checker("CleanBuffer", &mut dst_buf[0], &packet);
     checker("DirtyBuffer", &mut dst_buf[1], &packet);
 
-    {
-        // NOTE: buf.as_mut_slice() won't increase buf size.
-        // If buf size is not big enough, it will be silent and won't report error
-        let mut writer = BufWriter::new(dst_buf[2].as_mut_slice());
-        let result = packet.marshal(&mut writer);
-        assert!(result.is_err());
-    }
-}
+    let result = packet.marshal_to(&mut dst_buf[2]);
+    assert!(result.is_ok());
 
- */
+    Ok(())
+}
 
 //TODO: ADD more tests in https://github.com/pion/rtp/blob/master/packet_test.go
 //TODO: ...

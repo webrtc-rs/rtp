@@ -1,13 +1,12 @@
 use crate::error::Error;
 use crate::packetizer::{Depacketizer, Payloader};
 
-use std::io::Read;
-
-use byteorder::ReadBytesExt;
+use bytes::{BufMut, Bytes, BytesMut};
 
 #[cfg(test)]
 mod h264_test;
 
+/// H264Payloader payloads H264 packets
 pub struct H264Payloader;
 
 const STAPA_NALU_TYPE: u8 = 24;
@@ -21,9 +20,9 @@ const NALU_TYPE_BITMASK: u8 = 0x1F;
 const NALU_REF_IDC_BITMASK: u8 = 0x60;
 const FUA_START_BITMASK: u8 = 0x80;
 
-static ANNEXB_NALUSTART_CODE: [u8; 4] = [0x00, 0x00, 0x00, 0x01];
+static ANNEXB_NALUSTART_CODE: Bytes = Bytes::from_static(&[0x00, 0x00, 0x00, 0x01]);
 
-fn next_ind(nalu: &[u8], start: usize) -> (isize, isize) {
+fn next_ind(nalu: &Bytes, start: usize) -> (isize, isize) {
     let mut zero_count = 0;
 
     for (i, &b) in nalu[start..].iter().enumerate() {
@@ -38,7 +37,7 @@ fn next_ind(nalu: &[u8], start: usize) -> (isize, isize) {
     (-1, -1)
 }
 
-fn emit(nalu: &[u8], mtu: isize, payloads: &mut Vec<Vec<u8>>) {
+fn emit(nalu: &Bytes, mtu: usize, payloads: &mut Vec<Bytes>) {
     let nalu_type = nalu[0] & NALU_TYPE_BITMASK;
     let nalu_ref_idc = nalu[0] & NALU_REF_IDC_BITMASK;
 
@@ -47,17 +46,13 @@ fn emit(nalu: &[u8], mtu: isize, payloads: &mut Vec<Vec<u8>>) {
     }
 
     // Single NALU
-    if nalu.len() as isize <= mtu {
-        let mut out = vec![];
-
-        out.extend_from_slice(nalu);
-        payloads.push(out);
-
+    if nalu.len() <= mtu {
+        payloads.push(nalu.clone());
         return;
     }
 
     // FU-A
-    let max_fragment_size = mtu - FUA_HEADER_SIZE;
+    let max_fragment_size = mtu as isize - FUA_HEADER_SIZE;
 
     // The FU payload consists of fragments of the payload of the fragmented
     // NAL unit so that if the fragmentation unit payloads of consecutive
@@ -83,14 +78,14 @@ fn emit(nalu: &[u8], mtu: isize, payloads: &mut Vec<Vec<u8>>) {
     while nalu_data_remaining > 0 {
         let current_fragment_size = std::cmp::min(max_fragment_size, nalu_data_remaining);
         //out: = make([]byte, fuaHeaderSize + currentFragmentSize)
-        let mut out = vec![];
+        let mut out = BytesMut::with_capacity((FUA_HEADER_SIZE + current_fragment_size) as usize);
         // +---------------+
         // |0|1|2|3|4|5|6|7|
         // +-+-+-+-+-+-+-+-+
         // |F|NRI|  Type   |
         // +---------------+
         let b0 = FUA_NALU_TYPE | nalu_ref_idc;
-        out.push(b0);
+        out.put_u8(b0);
 
         // +---------------+
         //|0|1|2|3|4|5|6|7|
@@ -106,48 +101,46 @@ fn emit(nalu: &[u8], mtu: isize, payloads: &mut Vec<Vec<u8>>) {
             // Set end bit
             b1 |= 1 << 6;
         }
-        out.push(b1);
+        out.put_u8(b1);
 
-        out.extend_from_slice(
+        out.put(
             &nalu_data
                 [nalu_data_index as usize..(nalu_data_index + current_fragment_size) as usize],
         );
-        payloads.push(out);
+        payloads.push(out.freeze());
 
         nalu_data_remaining -= current_fragment_size;
         nalu_data_index += current_fragment_size;
     }
 }
 
-// Payload fragments a H264 packet across one or more byte arrays
 impl Payloader for H264Payloader {
-    fn payload<R: Read>(&self, mtu: isize, reader: &mut R) -> Result<Vec<Vec<u8>>, Error> {
-        let mut payloads = vec![];
-
-        let mut nals = vec![];
-        reader.read_to_end(&mut nals)?;
-        if nals.is_empty() {
-            return Ok(payloads);
+    /// Payload fragments a H264 packet across one or more byte arrays
+    fn payload(&self, mtu: usize, payload: &Bytes) -> Result<Vec<Bytes>, Error> {
+        if payload.is_empty() || mtu == 0 {
+            return Ok(vec![]);
         }
 
-        let (mut next_ind_start, mut next_ind_len) = next_ind(&nals, 0);
+        let mut payloads = vec![];
+
+        let (mut next_ind_start, mut next_ind_len) = next_ind(payload, 0);
         if next_ind_start == -1 {
-            emit(&nals, mtu, &mut payloads);
+            emit(payload, mtu, &mut payloads);
         } else {
             while next_ind_start != -1 {
                 let prev_start = (next_ind_start + next_ind_len) as usize;
-                let (next_ind_start2, next_ind_len2) = next_ind(&nals, prev_start);
+                let (next_ind_start2, next_ind_len2) = next_ind(payload, prev_start);
                 next_ind_start = next_ind_start2;
                 next_ind_len = next_ind_len2;
                 if next_ind_start != -1 {
                     emit(
-                        &nals[prev_start..next_ind_start as usize],
+                        &payload.slice(prev_start..next_ind_start as usize),
                         mtu,
                         &mut payloads,
                     );
                 } else {
                     // Emit until end of stream, no end indicator found
-                    emit(&nals[prev_start..], mtu, &mut payloads);
+                    emit(&payload.slice(prev_start..), mtu, &mut payloads);
                 }
             }
         }
@@ -156,60 +149,68 @@ impl Payloader for H264Payloader {
     }
 }
 
+/// H264Packet represents the H264 header that is stored in the payload of an RTP Packet
 #[derive(Debug, Default)]
 pub struct H264Packet {
-    payload: Vec<u8>,
+    pub payload: Bytes,
 }
 
 impl Depacketizer for H264Packet {
-    fn depacketize<R: Read>(&mut self, reader: &mut R) -> Result<(), Error> {
-        self.payload.clear();
+    /// depacketize parses the passed byte slice and stores the result in the H264Packet this method is called upon
+    fn depacketize(&mut self, packet: &Bytes) -> Result<(), Error> {
+        if packet.len() <= 2 {
+            return Err(Error::ErrShortPacket);
+        }
+
+        let mut payload = BytesMut::new();
 
         // NALU Types
         // https://tools.ietf.org/html/rfc6184#section-5.4
-        let b0 = reader.read_u8()?;
+        let b0 = packet[0];
         let nalu_type = b0 & NALU_TYPE_BITMASK;
         if nalu_type > 0 && nalu_type < 24 {
-            self.payload.append(&mut ANNEXB_NALUSTART_CODE.to_vec());
-            self.payload.push(b0);
-            reader.read_to_end(&mut self.payload)?;
+            payload.put(&*ANNEXB_NALUSTART_CODE);
+            payload.put(&*packet.clone());
+            self.payload = payload.freeze();
             Ok(())
         } else if nalu_type == STAPA_NALU_TYPE {
-            let mut curr_offset = 0;
-            let mut payload = vec![];
-            reader.read_to_end(&mut payload)?;
-
-            while curr_offset + 1 < payload.len() {
+            let mut curr_offset = STAPA_HEADER_SIZE;
+            while curr_offset < packet.len() {
                 let nalu_size =
-                    ((payload[curr_offset] as usize) << 8) | payload[curr_offset + 1] as usize;
+                    ((packet[curr_offset] as usize) << 8) | packet[curr_offset + 1] as usize;
                 curr_offset += STAPA_NALU_LENGTH_SIZE;
 
-                if curr_offset + nalu_size > payload.len() {
+                if packet.len() < curr_offset + nalu_size {
                     return Err(Error::StapASizeLargerThanBuffer(
                         nalu_size,
-                        payload.len() - curr_offset,
+                        packet.len() - curr_offset,
                     ));
                 }
-                self.payload.append(&mut ANNEXB_NALUSTART_CODE.to_vec());
-                self.payload
-                    .append(&mut payload[curr_offset..curr_offset + nalu_size].to_vec());
+                payload.put(&*ANNEXB_NALUSTART_CODE);
+                payload.put(&*packet.slice(curr_offset..curr_offset + nalu_size));
                 curr_offset += nalu_size;
             }
 
+            self.payload = payload.freeze();
             Ok(())
         } else if nalu_type == FUA_NALU_TYPE {
-            let b1 = reader.read_u8()?;
+            if packet.len() < FUA_HEADER_SIZE as usize {
+                return Err(Error::ErrShortPacket);
+            }
+
+            let b1 = packet[1];
             if b1 & FUA_START_BITMASK != 0 {
                 let nalu_ref_idc = b0 & NALU_REF_IDC_BITMASK;
                 let fragmented_nalu_type = b1 & NALU_TYPE_BITMASK;
 
-                self.payload.append(&mut ANNEXB_NALUSTART_CODE.to_vec());
-                self.payload.push(nalu_ref_idc | fragmented_nalu_type);
-                reader.read_to_end(&mut self.payload)?;
+                payload.put(&*ANNEXB_NALUSTART_CODE);
+                payload.put_u8(nalu_ref_idc | fragmented_nalu_type);
+                payload.put_slice(&*packet.slice(FUA_HEADER_SIZE as usize..));
 
+                self.payload = payload.freeze();
                 Ok(())
             } else {
-                reader.read_to_end(&mut self.payload)?;
+                self.payload = packet.slice(FUA_HEADER_SIZE as usize..);
                 Ok(())
             }
         } else {
