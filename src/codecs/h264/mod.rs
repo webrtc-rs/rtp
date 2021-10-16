@@ -6,6 +6,7 @@ use crate::{
     packetizer::{Depacketizer, Payloader},
 };
 
+use byteorder::{BigEndian, WriteBytesExt};
 use bytes::{BufMut, Bytes, BytesMut};
 
 /// H264Payloader payloads H264 packets
@@ -70,13 +71,15 @@ impl H264Payloader {
             return;
         } else if let (Some(sps_nalu), Some(pps_nalu)) = (&self.sps_nalu, &self.pps_nalu) {
             // Pack current NALU with SPS and PPS as STAP-A
-            let sps_len = (sps_nalu.len() as u16).to_be_bytes();
-            let pps_len = (pps_nalu.len() as u16).to_be_bytes();
-
+            
             let mut stap_a_nalu = vec![OUTPUT_STAP_AHEADER];
-            stap_a_nalu.extend(sps_len);
+            if let Err(_) = stap_a_nalu.write_u16::<BigEndian>(sps_nalu.len() as u16) {
+                return;
+            }
             stap_a_nalu.extend_from_slice(sps_nalu);
-            stap_a_nalu.extend(pps_len);
+            if let Err(_) = stap_a_nalu.write_u16::<BigEndian>(pps_nalu.len() as u16) {
+                return;
+            }
             stap_a_nalu.extend_from_slice(pps_nalu);
             if stap_a_nalu.len() <= mtu {
                 payloads.push(Bytes::from(stap_a_nalu));
