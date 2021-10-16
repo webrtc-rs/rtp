@@ -71,7 +71,7 @@ impl H264Payloader {
             return;
         } else if let (Some(sps_nalu), Some(pps_nalu)) = (&self.sps_nalu, &self.pps_nalu) {
             // Pack current NALU with SPS and PPS as STAP-A
-            
+
             let mut stap_a_nalu = vec![OUTPUT_STAP_AHEADER];
             if let Err(_) = stap_a_nalu.write_u16::<BigEndian>(sps_nalu.len() as u16) {
                 return;
