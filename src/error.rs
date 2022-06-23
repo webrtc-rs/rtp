@@ -70,10 +70,8 @@ impl From<Error> for util::Error {
 
 impl PartialEq<util::Error> for Error {
     fn eq(&self, other: &util::Error) -> bool {
-        if let Some(down) = other.downcast_ref::<Error>() {
-            self == down
-        } else {
-            false
-        }
+        other.downcast_ref::<Error>()
+            .map(|down| self == down)
+            .unwrap_or_default()
     }
 }

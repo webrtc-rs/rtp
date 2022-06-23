@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use super::*;
 use crate::error::Result;
 use bytes::{Bytes, BytesMut};

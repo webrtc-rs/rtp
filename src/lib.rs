@@ -1,5 +1,4 @@
-#![warn(rust_2018_idioms)]
-#![allow(dead_code)]
+#![deny(rust_2018_idioms)]
 
 pub mod codecs;
 mod error;
