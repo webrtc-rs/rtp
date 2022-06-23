@@ -7,32 +7,30 @@ use crate::{
 };
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
-use std::fmt;
-use std::sync::Arc;
 
 /// Flexible mode 15 bit picture ID
 const VP9HEADER_SIZE: usize = 3;
 const MAX_SPATIAL_LAYERS: u8 = 5;
 const MAX_VP9REF_PICS: usize = 3;
 
-/// InitialPictureIDFn is a function that returns random initial picture ID.
-pub type InitialPictureIDFn = Arc<dyn (Fn() -> u16) + Send + Sync>;
-
 /// Vp9Payloader payloads VP9 packets
-#[derive(Default, Clone)]
+#[derive(Clone, Debug)]
 pub struct Vp9Payloader {
     picture_id: u16,
-    initialized: bool,
-
-    pub initial_picture_id_fn: Option<InitialPictureIDFn>,
 }
 
-impl fmt::Debug for Vp9Payloader {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Vp9Payloader")
-            .field("picture_id", &self.picture_id)
-            .field("initialized", &self.initialized)
-            .finish()
+impl Vp9Payloader {
+    pub fn new() -> Self {
+        Self::new_with(|| rand::random::<u16>() & 0x7FFF)
+    }
+
+    pub fn new_with<F>(init_picture_id: F) -> Self
+    where
+        F: FnOnce() -> u16,
+    {
+        Self {
+            picture_id: init_picture_id(),
+        }
     }
 }
 
@@ -81,19 +79,6 @@ impl Payloader for Vp9Payloader {
             return Ok(vec![]);
         }
 
-        if !self.initialized {
-            if self.initial_picture_id_fn.is_none() {
-                self.initial_picture_id_fn =
-                    Some(Arc::new(|| -> u16 { rand::random::<u16>() & 0x7FFF }));
-            }
-            self.picture_id = if let Some(f) = &self.initial_picture_id_fn {
-                f()
-            } else {
-                0
-            };
-            self.initialized = true;
-        }
-
         let max_fragment_size = mtu as isize - VP9HEADER_SIZE as isize;
         let mut payloads = vec![];
         let mut payload_data_remaining = payload.len();
@@ -134,10 +119,6 @@ impl Payloader for Vp9Payloader {
         self.picture_id &= 0x7FFF;
 
         Ok(payloads)
-    }
-
-    fn clone_to(&self) -> Box<dyn Payloader + Send + Sync> {
-        Box::new(self.clone())
     }
 }
 
@@ -263,9 +244,9 @@ impl Vp9Packet {
     // M:   | EXTENDED PID  |
     //      +-+-+-+-+-+-+-+-+
     //
-    fn parse_picture_id(
+    fn parse_picture_id<B: Buf>(
         &mut self,
-        reader: &mut dyn Buf,
+        reader: &mut B,
         mut payload_index: usize,
     ) -> Result<usize> {
         if reader.remaining() == 0 {
@@ -288,9 +269,9 @@ impl Vp9Packet {
         Ok(payload_index)
     }
 
-    fn parse_layer_info(
+    fn parse_layer_info<B: Buf>(
         &mut self,
-        reader: &mut dyn Buf,
+        reader: &mut B,
         mut payload_index: usize,
     ) -> Result<usize> {
         payload_index = self.parse_layer_info_common(reader, payload_index)?;
@@ -308,9 +289,9 @@ impl Vp9Packet {
     // L:   |  T  |U|  S  |D|
     //      +-+-+-+-+-+-+-+-+
     //
-    fn parse_layer_info_common(
+    fn parse_layer_info_common<B: Buf>(
         &mut self,
-        reader: &mut dyn Buf,
+        reader: &mut B,
         mut payload_index: usize,
     ) -> Result<usize> {
         if reader.remaining() == 0 {
@@ -339,9 +320,9 @@ impl Vp9Packet {
     //      |   tl0picidx   |
     //      +-+-+-+-+-+-+-+-+
     //
-    fn parse_layer_info_non_flexible_mode(
+    fn parse_layer_info_non_flexible_mode<B: Buf>(
         &mut self,
-        reader: &mut dyn Buf,
+        reader: &mut B,
         mut payload_index: usize,
     ) -> Result<usize> {
         if reader.remaining() == 0 {
@@ -359,9 +340,9 @@ impl Vp9Packet {
     //      +-+-+-+-+-+-+-+-+                    N=1: An additional P_DIFF follows
     //                                                current P_DIFF.
     //
-    fn parse_ref_indices(
+    fn parse_ref_indices<B: Buf>(
         &mut self,
-        reader: &mut dyn Buf,
+        reader: &mut B,
         mut payload_index: usize,
     ) -> Result<usize> {
         let mut b = 1u8;
@@ -401,7 +382,7 @@ impl Vp9Packet {
     //      |    P_DIFF     | (OPTIONAL)    . R times    .
     //      +-+-+-+-+-+-+-+-+              -|           -|
     //
-    fn parse_ssdata(&mut self, reader: &mut dyn Buf, mut payload_index: usize) -> Result<usize> {
+    fn parse_ssdata<B: Buf>(&mut self, reader: &mut B, mut payload_index: usize) -> Result<usize> {
         if reader.remaining() == 0 {
             return Err(Error::ErrShortPacket);
         }

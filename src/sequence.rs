@@ -8,13 +8,6 @@ use std::sync::{
 pub trait Sequencer: fmt::Debug {
     fn next_sequence_number(&self) -> u16;
     fn roll_over_count(&self) -> u64;
-    fn clone_to(&self) -> Box<dyn Sequencer + Send + Sync>;
-}
-
-impl Clone for Box<dyn Sequencer + Send + Sync> {
-    fn clone(&self) -> Box<dyn Sequencer + Send + Sync> {
-        self.clone_to()
-    }
 }
 
 /// NewRandomSequencer returns a new sequencer starting from a random sequence
@@ -51,9 +44,5 @@ impl Sequencer for SequencerImpl {
     /// has wrapped
     fn roll_over_count(&self) -> u64 {
         self.count.load(Ordering::Acquire).overflowing_shr(16).0
-    }
-
-    fn clone_to(&self) -> Box<dyn Sequencer + Send + Sync> {
-        Box::new(self.clone())
     }
 }

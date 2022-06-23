@@ -8,8 +8,8 @@ use std::time::{Duration, UNIX_EPOCH};
 #[test]
 fn test_packetizer() -> Result<()> {
     let multiple_payload = Bytes::from_static(&[0; 128]);
-    let g722 = Box::new(g7xx::G722Payloader {});
-    let seq = Box::new(new_random_sequencer());
+    let g722 = g7xx::G722Payloader {};
+    let seq = new_random_sequencer();
 
     //use the G722 payloader here, because it's very simple and all 0s is valid G722 data.
     let mut packetizer = new_packetizer(100, 98, 0x1234ABCD, g722, seq, 90000);
@@ -33,15 +33,15 @@ fn test_packetizer() -> Result<()> {
 
 #[test]
 fn test_packetizer_abs_send_time() -> Result<()> {
-    let g722 = Box::new(g7xx::G722Payloader {});
-    let sequencer = Box::new(new_fixed_sequencer(1234));
+    let g722 = g7xx::G722Payloader {};
+    let sequencer = new_fixed_sequencer(1234);
 
     let time_gen = || {
         let loc = FixedOffset::west(5 * 60 * 60); // UTC-5
-                let t = loc.ymd(1985, 6, 23).and_hms_nano(4, 0, 0, 0);
-                UNIX_EPOCH
-                    .checked_add(Duration::from_nanos(t.timestamp_nanos() as u64))
-                    .unwrap_or(UNIX_EPOCH)
+        let t = loc.ymd(1985, 6, 23).and_hms_nano(4, 0, 0, 0);
+        UNIX_EPOCH
+            .checked_add(Duration::from_nanos(t.timestamp_nanos() as u64))
+            .unwrap_or(UNIX_EPOCH)
     };
 
     //use the G722 payloader here, because it's very simple and all 0s is valid G722 data.
@@ -92,8 +92,8 @@ fn test_packetizer_abs_send_time() -> Result<()> {
 
 #[test]
 fn test_packetizer_timestamp_rollover_does_not_panic() -> Result<()> {
-    let g722 = Box::new(g7xx::G722Payloader {});
-    let seq = Box::new(new_random_sequencer());
+    let g722 = g7xx::G722Payloader {};
+    let seq = new_random_sequencer();
 
     let payload = Bytes::from_static(&[0; 128]);
     let mut packetizer = new_packetizer(100, 98, 0x1234ABCD, g722, seq, 90000);

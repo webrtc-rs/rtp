@@ -19,10 +19,6 @@ impl Payloader for OpusPayloader {
 
         Ok(vec![payload.clone()])
     }
-
-    fn clone_to(&self) -> Box<dyn Payloader + Send + Sync> {
-        Box::new(*self)
-    }
 }
 
 /// OpusPacket represents the Opus header that is stored in the payload of an RTP Packet

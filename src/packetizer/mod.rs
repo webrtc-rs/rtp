@@ -12,13 +12,6 @@ use std::time::SystemTime;
 /// Payloader payloads a byte array for use as rtp.Packet payloads
 pub trait Payloader: fmt::Debug {
     fn payload(&mut self, mtu: usize, b: &Bytes) -> Result<Vec<Bytes>>;
-    fn clone_to(&self) -> Box<dyn Payloader + Send + Sync>;
-}
-
-impl Clone for Box<dyn Payloader + Send + Sync> {
-    fn clone(&self) -> Box<dyn Payloader + Send + Sync> {
-        self.clone_to()
-    }
 }
 
 /// Packetizer packetizes a payload
@@ -26,13 +19,6 @@ pub trait Packetizer: fmt::Debug {
     fn enable_abs_send_time(&mut self, value: u8);
     fn packetize(&mut self, payload: &Bytes, samples: u32) -> Result<Vec<Packet>>;
     fn skip_samples(&mut self, skipped_samples: u32);
-    fn clone_to(&self) -> Box<dyn Packetizer + Send + Sync>;
-}
-
-impl Clone for Box<dyn Packetizer + Send + Sync> {
-    fn clone(&self) -> Box<dyn Packetizer + Send + Sync> {
-        self.clone_to()
-    }
 }
 
 /// Depacketizer depacketizes a RTP payload, removing any RTP specific data from the payload
@@ -50,19 +36,19 @@ pub trait Depacketizer {
 }
 
 #[derive(Clone)]
-pub(crate) struct PacketizerImpl {
+pub(crate) struct PacketizerImpl<P, S> {
     pub(crate) mtu: usize,
     pub(crate) payload_type: u8,
     pub(crate) ssrc: u32,
-    pub(crate) payloader: Box<dyn Payloader + Send + Sync>,
-    pub(crate) sequencer: Box<dyn Sequencer + Send + Sync>,
+    pub(crate) payloader: P,
+    pub(crate) sequencer: S,
     pub(crate) timestamp: u32,
     pub(crate) clock_rate: u32,
     pub(crate) abs_send_time: u8, //http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time
     pub(crate) time_gen: fn() -> SystemTime,
 }
 
-impl fmt::Debug for PacketizerImpl {
+impl<P, S> fmt::Debug for PacketizerImpl<P, S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PacketizerImpl")
             .field("mtu", &self.mtu)
@@ -75,12 +61,12 @@ impl fmt::Debug for PacketizerImpl {
     }
 }
 
-pub fn new_packetizer(
+pub fn new_packetizer<P: Payloader, S: Sequencer>(
     mtu: usize,
     payload_type: u8,
     ssrc: u32,
-    payloader: Box<dyn Payloader + Send + Sync>,
-    sequencer: Box<dyn Sequencer + Send + Sync>,
+    payloader: P,
+    sequencer: S,
     clock_rate: u32,
 ) -> impl Packetizer {
     PacketizerImpl {
@@ -92,11 +78,11 @@ pub fn new_packetizer(
         timestamp: rand::random::<u32>(),
         clock_rate,
         abs_send_time: 0,
-        time_gen: SystemTime::now
+        time_gen: SystemTime::now,
     }
 }
 
-impl Packetizer for PacketizerImpl {
+impl<P: Payloader, S: Sequencer> Packetizer for PacketizerImpl<P, S> {
     fn enable_abs_send_time(&mut self, value: u8) {
         self.abs_send_time = value
     }
@@ -142,9 +128,5 @@ impl Packetizer for PacketizerImpl {
     /// RTP payloads produced have a gap in timestamps
     fn skip_samples(&mut self, skipped_samples: u32) {
         self.timestamp = self.timestamp.wrapping_add(skipped_samples);
-    }
-
-    fn clone_to(&self) -> Box<dyn Packetizer + Send + Sync> {
-        Box::new(self.clone())
     }
 }

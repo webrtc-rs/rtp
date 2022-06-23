@@ -192,10 +192,6 @@ impl Payloader for H264Payloader {
 
         Ok(payloads)
     }
-
-    fn clone_to(&self) -> Box<dyn Payloader + Send + Sync> {
-        Box::new(self.clone())
-    }
 }
 
 /// H264Packet represents the H264 header that is stored in the payload of an RTP Packet

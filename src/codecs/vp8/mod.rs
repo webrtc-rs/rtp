@@ -104,10 +104,6 @@ impl Payloader for Vp8Payloader {
 
         Ok(payloads)
     }
-
-    fn clone_to(&self) -> Box<dyn Payloader + Send + Sync> {
-        Box::new(*self)
-    }
 }
 
 /// Vp8Packet represents the VP8 header that is stored in the payload of an RTP Packet
