@@ -9,7 +9,7 @@ use std::time::{Duration, UNIX_EPOCH};
 fn test_packetizer() -> Result<()> {
     let multiple_payload = Bytes::from_static(&[0; 128]);
     let g722 = g7xx::G722Payloader {};
-    let seq = new_random_sequencer();
+    let seq = WrappingSequencer::new_random();
 
     //use the G722 payloader here, because it's very simple and all 0s is valid G722 data.
     let mut packetizer = new_packetizer(100, 98, 0x1234ABCD, g722, seq, 90000);
@@ -34,7 +34,7 @@ fn test_packetizer() -> Result<()> {
 #[test]
 fn test_packetizer_abs_send_time() -> Result<()> {
     let g722 = g7xx::G722Payloader {};
-    let sequencer = new_fixed_sequencer(1234);
+    let sequencer = WrappingSequencer::new(1234);
 
     let time_gen = || {
         let loc = FixedOffset::west(5 * 60 * 60); // UTC-5
@@ -93,7 +93,7 @@ fn test_packetizer_abs_send_time() -> Result<()> {
 #[test]
 fn test_packetizer_timestamp_rollover_does_not_panic() -> Result<()> {
     let g722 = g7xx::G722Payloader {};
-    let seq = new_random_sequencer();
+    let seq = WrappingSequencer::new_random();
 
     let payload = Bytes::from_static(&[0; 128]);
     let mut packetizer = new_packetizer(100, 98, 0x1234ABCD, g722, seq, 90000);

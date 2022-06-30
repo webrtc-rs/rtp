@@ -55,11 +55,18 @@ pub enum Error {
     StapASizeLargerThanBuffer(usize, usize),
     #[error("nalu type {0} is currently not handled")]
     NaluTypeIsNotHandled(u8),
-    #[error("{0}")]
-    Util(#[from] util::Error),
 
+    // We box the util::Error and use a Box<str> to keep the size of this error to 24 bytes
     #[error("{0}")]
-    Other(String),
+    Util(Box<util::Error>),
+    #[error("{0}")]
+    Other(Box<str>),
+}
+
+impl From<util::Error> for Error {
+    fn from(e: util::Error) -> Self {
+        Self::Util(Box::new(e))
+    }
 }
 
 impl From<Error> for util::Error {
