@@ -36,7 +36,7 @@ pub trait Depacketizer {
 }
 
 #[derive(Clone)]
-pub(crate) struct PacketizerImpl<P, S> {
+pub struct RtpPacketizer<P, S> {
     pub(crate) mtu: usize,
     pub(crate) payload_type: u8,
     pub(crate) ssrc: u32,
@@ -48,7 +48,7 @@ pub(crate) struct PacketizerImpl<P, S> {
     pub(crate) time_gen: fn() -> SystemTime,
 }
 
-impl<P, S> fmt::Debug for PacketizerImpl<P, S> {
+impl<P, S> fmt::Debug for RtpPacketizer<P, S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PacketizerImpl")
             .field("mtu", &self.mtu)
@@ -68,8 +68,8 @@ pub fn new_packetizer<P: Payloader, S: Sequencer>(
     payloader: P,
     sequencer: S,
     clock_rate: u32,
-) -> impl Packetizer {
-    PacketizerImpl {
+) -> RtpPacketizer<P, S> {
+    RtpPacketizer {
         mtu,
         payload_type,
         ssrc,
@@ -82,7 +82,7 @@ pub fn new_packetizer<P: Payloader, S: Sequencer>(
     }
 }
 
-impl<P: Payloader, S: Sequencer> Packetizer for PacketizerImpl<P, S> {
+impl<P: Payloader, S: Sequencer> Packetizer for RtpPacketizer<P, S> {
     fn enable_abs_send_time(&mut self, value: u8) {
         self.abs_send_time = value
     }

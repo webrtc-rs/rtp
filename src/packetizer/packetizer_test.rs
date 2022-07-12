@@ -45,7 +45,7 @@ fn test_packetizer_abs_send_time() -> Result<()> {
     };
 
     //use the G722 payloader here, because it's very simple and all 0s is valid G722 data.
-    let mut pktizer = PacketizerImpl {
+    let mut pktizer = RtpPacketizer {
         mtu: 100,
         payload_type: 98,
         ssrc: 0x1234ABCD,
