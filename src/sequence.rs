@@ -14,7 +14,7 @@ impl WrappingSequencer {
     pub fn new(init_sequence_number: u16) -> Self {
         Self {
             next_sequence_number: init_sequence_number,
-            roll_over_count: 0
+            roll_over_count: 0,
         }
     }
 
@@ -40,7 +40,7 @@ impl Sequencer for WrappingSequencer {
         if self.next_sequence_number == 0 {
             self.roll_over_count += 1;
         }
-        
+
         next_sequence_number
     }
 }

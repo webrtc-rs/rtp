@@ -52,7 +52,7 @@ pub struct RtpPacketizer<P, S> {
 
 impl<P, S> fmt::Debug for RtpPacketizer<P, S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("PacketizerImpl")
+        f.debug_struct("RtpPacketizer")
             .field("mtu", &self.mtu)
             .field("payload_type", &self.payload_type)
             .field("ssrc", &self.ssrc)
