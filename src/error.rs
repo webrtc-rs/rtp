@@ -80,6 +80,6 @@ impl PartialEq<util::Error> for Error {
         other
             .downcast_ref::<Error>()
             .map(|down| self == down)
-            .unwrap_or_default()
+            .unwrap_or(false)
     }
 }

@@ -295,7 +295,7 @@ fn test_vp9_payloader_payload() -> Result<()> {
     ];
 
     for (name, bs, mtu, expected) in tests {
-        let mut pck = Vp9Payloader::new_with(|| 8692);
+        let mut pck = Vp9Payloader::new_with_id(8692);
 
         let mut actual = vec![];
         for b in &bs {
@@ -306,7 +306,7 @@ fn test_vp9_payloader_payload() -> Result<()> {
 
     //"PictureIDOverflow"
     {
-        let mut pck = Vp9Payloader::new_with(|| 8692);
+        let mut pck = Vp9Payloader::new_with_id(8692);
 
         let mut p_prev = Vp9Packet::default();
         for i in 0..0x8000 {

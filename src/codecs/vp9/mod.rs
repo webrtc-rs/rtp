@@ -21,16 +21,19 @@ pub struct Vp9Payloader {
 
 impl Vp9Payloader {
     pub fn new() -> Self {
-        Self::new_with(|| rand::random::<u16>() & 0x7FFF)
+        Self::new_with_id(rand::random::<u16>() & 0x7FFF)
     }
 
-    pub fn new_with<F>(init_picture_id: F) -> Self
-    where
-        F: FnOnce() -> u16,
-    {
+    pub fn new_with_id(init_picture_id: u16) -> Self {
         Self {
-            picture_id: init_picture_id(),
+            picture_id: init_picture_id,
         }
+    }
+}
+
+impl Default for Vp9Payloader {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

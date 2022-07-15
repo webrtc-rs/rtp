@@ -45,6 +45,8 @@ pub struct RtpPacketizer<P, S> {
     pub(crate) timestamp: u32,
     pub(crate) clock_rate: u32,
     pub(crate) abs_send_time: u8, //http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time
+    // TODO: SystemTime is not monotonic, but Instant doesn't work because it can't be converted
+    // to a unix timestamp. We should probably look for a way to have the best of both worlds.
     pub(crate) time_gen: fn() -> SystemTime,
 }
 
